@@ -170,10 +170,11 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 <div class="view active" id="viewPosvenda">
   <div class="page">
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-val" id="pvStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Clientes ativos</div></div>
-      <div class="stat-card"><div class="stat-val" id="pvStatHoje" style="color:var(--laranja)">0</div><div class="stat-label">Alertas hoje</div></div>
-      <div class="stat-card"><div class="stat-val" id="pvStatEnviados" style="color:var(--green)">0</div><div class="stat-label">Msgs enviadas</div></div>
+      <div class="stat-card" onclick="filtrarClientesPV('todos')" style="cursor:pointer"><div class="stat-val" id="pvStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Clientes ativos</div></div>
+      <div class="stat-card" onclick="filtrarClientesPV('hoje')" style="cursor:pointer"><div class="stat-val" id="pvStatHoje" style="color:var(--laranja)">0</div><div class="stat-label">Alertas hoje</div></div>
+      <div class="stat-card" onclick="filtrarClientesPV('enviados')" style="cursor:pointer"><div class="stat-val" id="pvStatEnviados" style="color:var(--green)">0</div><div class="stat-label">Msgs enviadas</div></div>
     </div>
+    <div id="pvFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Clientes em acompanhamento</h2>
       <button class="btn btn-primary" onclick="abrirModalCliente()">➕ Novo cliente</button>
@@ -474,6 +475,21 @@ async function salvarCliente() {
 
 function fmt(d) { const [y,m,day] = d.split('-'); return day + '/' + m + '/' + y; }
 
+let filtroPVAtivo = 'todos';
+
+function filtrarClientesPV(tipo) {
+  filtroPVAtivo = tipo;
+  const labels = { todos: null, hoje: '🔔 Mostrando: clientes com alerta hoje', enviados: '✅ Mostrando: mensagens já enviadas' };
+  const filtroEl = document.getElementById('pvFiltroAtivo');
+  if (labels[tipo]) {
+    filtroEl.style.display = 'block';
+    filtroEl.innerHTML = '<span style="font-size:13px;color:var(--ink-soft)">' + labels[tipo] + ' — <a href="#" onclick="filtrarClientesPV(\'todos\');return false;" style="color:var(--laranja)">limpar filtro</a></span>';
+  } else {
+    filtroEl.style.display = 'none';
+  }
+  renderClientesPV();
+}
+
 function renderClientesPV() {
   const hoje = new Date().toISOString().split('T')[0];
   document.getElementById('pvStatTotal').textContent = clientesPV.length;
@@ -485,14 +501,27 @@ function renderClientesPV() {
   document.getElementById('pvStatHoje').textContent = alertasHoje;
   document.getElementById('pvStatEnviados').textContent = enviados;
 
+  let clientesFiltrados = clientesPV;
+  if (filtroPVAtivo === 'hoje') {
+    clientesFiltrados = clientesPV.filter(c => c.steps.some(s => s.status === 'pendente' && s.data <= hoje));
+  } else if (filtroPVAtivo === 'enviados') {
+    clientesFiltrados = clientesPV.filter(c => c.steps.some(s => s.status === 'enviado'));
+  }
+
   const lista = document.getElementById('pvClientesList');
-  if (!clientesPV.length) {
-    lista.innerHTML = '<div class="empty-state"><div>👥</div><p>Nenhum cliente cadastrado ainda.</p></div>';
+  if (!clientesFiltrados.length) {
+    const msgs = { todos: 'Nenhum cliente cadastrado ainda.', hoje: 'Nenhum alerta pendente para hoje! 🎉', enviados: 'Nenhuma mensagem enviada ainda.' };
+    lista.innerHTML = '<div class="empty-state"><div>👥</div><p>' + msgs[filtroPVAtivo] + '</p></div>';
     return;
   }
-  lista.innerHTML = '<div class="list-header"><h3>Todos os clientes (' + clientesPV.length + ')</h3></div>' +
-    clientesPV.map(c => {
-      const stepsHtml = c.steps.map((s, i) => {
+  lista.innerHTML = '<div class="list-header"><h3>' + clientesFiltrados.length + ' cliente(s)</h3></div>' +
+    clientesFiltrados.map(c => {
+      let stepsParaMostrar = c.steps;
+      if (filtroPVAtivo === 'hoje') stepsParaMostrar = c.steps.filter(s => s.status === 'pendente' && s.data <= hoje);
+      if (filtroPVAtivo === 'enviados') stepsParaMostrar = c.steps.filter(s => s.status === 'enviado');
+
+      const stepsHtml = stepsParaMostrar.map((s) => {
+        const i = c.steps.indexOf(s);
         let st = s.status;
         if (st === 'pendente' && s.data < hoje) st = 'atrasado';
         const cor = st === 'enviado' ? 'var(--green)' : st === 'atrasado' ? 'var(--red)' : '#854d0e';
