@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoIA — Plataforma para o seu negócio</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --laranja: #f97316; --laranja-dark: #ea6c0a;
+  --laranja-soft: rgba(249,115,22,0.10); --laranja-border: rgba(249,115,22,0.28);
+  --laranja-pale: #fff7ed; --ink: #0f0f10; --ink-soft: #3f3f46; --ink-muted: #a1a1aa;
+  --surface: #f8f8f8; --white: #ffffff; --border: #e4e4e7;
+  --green: #16a34a; --green-bg: #f0fdf4; --green-border: #86efac;
+  --red: #dc2626; --red-bg: #fef2f2;
+  --blue: #2563eb; --blue-bg: #eff6ff; --blue-border: #93c5fd;
+  --radius: 10px; --radius-lg: 16px;
+}
+body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface); color: var(--ink); min-height: 100vh; }
+
+.login-screen { position: fixed; inset: 0; z-index: 9999; background: linear-gradient(135deg, #fff7ed 0%, #f8f8f8 100%); display: flex; align-items: center; justify-content: center; }
+.login-card { background: var(--white); border: 1px solid var(--border); border-radius: 20px; padding: 2.75rem 3rem; width: 100%; max-width: 400px; box-shadow: 0 12px 48px rgba(249,115,22,0.10); display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+.login-brand { display: flex; align-items: center; gap: 10px; }
+.login-icon { width: 48px; height: 48px; background: var(--laranja); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: white; }
+.login-brand h1 { font-size: 26px; font-weight: 800; color: var(--ink); letter-spacing: -0.8px; }
+.login-brand h1 span { color: var(--laranja); }
+.login-card p { font-size: 14px; color: var(--ink-muted); text-align: center; }
+.login-input { width: 100%; padding: 12px 16px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 15px; font-family: 'Plus Jakarta Sans', sans-serif; color: var(--ink); background: var(--surface); outline: none; transition: all 0.2s; }
+.login-input:focus { border-color: var(--laranja); box-shadow: 0 0 0 3px var(--laranja-soft); }
+.login-btn { width: 100%; padding: 13px; background: var(--laranja); color: white; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+.login-btn:hover { background: var(--laranja-dark); }
+.login-err { width: 100%; font-size: 13px; color: var(--red); background: var(--red-bg); border: 1px solid #fca5a5; border-radius: 8px; padding: 9px 12px; text-align: center; display: none; }
+
+.navbar { position: sticky; top: 0; z-index: 100; background: #0f0f10; height: 58px; display: flex; align-items: center; padding: 0 1.5rem; gap: 8px; box-shadow: 0 1px 12px rgba(0,0,0,0.2); overflow-x: auto; }
+.nav-brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.nav-icon { width: 32px; height: 32px; background: var(--laranja); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: white; }
+.nav-name { font-size: 17px; font-weight: 800; color: white; letter-spacing: -0.5px; }
+.nav-name span { color: var(--laranja); }
+.nav-tabs { display: flex; gap: 4px; margin-left: 1.5rem; flex-shrink: 0; }
+.nav-tab { padding: 6px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: rgba(255,255,255,0.5); cursor: pointer; border: none; background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; white-space: nowrap; }
+.nav-tab:hover { color: white; background: rgba(255,255,255,0.1); }
+.nav-tab.active { color: var(--ink); background: var(--laranja); font-weight: 600; }
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.logout-btn { font-size: 12px; color: rgba(255,255,255,0.4); background: none; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.15s; white-space: nowrap; }
+.logout-btn:hover { color: white; }
+
+.view { display: none; }
+.view.active { display: block; }
+.page { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+
+.card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.25rem; }
+.card-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
+.card-icon { width: 30px; height: 30px; background: var(--laranja-soft); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 13.5px; font-family: 'Plus Jakarta Sans', sans-serif; color: var(--ink); background: var(--surface); transition: all 0.2s; outline: none; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--laranja); box-shadow: 0 0 0 3px var(--laranja-soft); background: var(--white); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.req { color: var(--laranja); }
+
+.btn { padding: 10px 18px; border: none; border-radius: var(--radius); font-size: 14px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: var(--laranja); color: white; }
+.btn-primary:hover { background: var(--laranja-dark); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--ink-soft); }
+.btn-outline:hover { border-color: var(--laranja); color: var(--laranja); }
+.btn-green { background: var(--green); color: white; }
+.btn-red { background: var(--red-bg); color: var(--red); border: 1px solid #fca5a5; }
+.btn-red:hover { background: #fee2e2; }
+.btn-full { width: 100%; justify-content: center; padding: 12px; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+.stat-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; text-align: center; }
+.stat-val { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.stat-label { font-size: 12px; color: var(--ink-muted); margin-top: 4px; }
+
+.item-list { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.list-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--surface); }
+.list-header h3 { font-size: 14px; font-weight: 700; }
+.list-item { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.list-item:last-child { border-bottom: none; }
+.list-item:hover { background: var(--laranja-pale); }
+.item-info { flex: 1; }
+.item-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+.item-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+.item-valor { font-size: 15px; font-weight: 800; white-space: nowrap; }
+.item-valor.entrada { color: var(--green); }
+.item-valor.saida { color: var(--red); }
+
+.empty-state { padding: 3rem; text-align: center; color: var(--ink-muted); opacity: 0.5; }
+.empty-state div { font-size: 40px; margin-bottom: 8px; }
+.empty-state p { font-size: 14px; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,15,16,0.5); z-index: 300; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.modal-overlay.show { display: flex; }
+.modal-card { background: var(--white); border-radius: var(--radius-lg); width: 100%; max-width: 480px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h3 { font-size: 16px; font-weight: 700; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--ink-muted); }
+.modal-body { padding: 1.5rem; }
+.modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+.toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--laranja); color: white; padding: 11px 20px; border-radius: var(--radius); font-size: 13.5px; font-weight: 600; opacity: 0; transform: translateY(8px); transition: all 0.25s; z-index: 999; pointer-events: none; max-width: 300px; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+.construcao { text-align: center; padding: 4rem 2rem; color: var(--ink-muted); }
+.construcao div { font-size: 48px; margin-bottom: 1rem; }
+
+@media (max-width: 768px) {
+  .page { padding: 1rem; }
+  .stats-grid { grid-template-columns: 1fr; }
+  .form-row, .form-row-3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-icon">A</div>
+      <h1>Auto<span>IA</span></h1>
+    </div>
+    <p>Tudo que seu negócio precisa, em um só lugar.</p>
+    <input type="email" class="login-input" id="emailInput" placeholder="seu@email.com" onkeydown="if(event.key==='Enter') document.getElementById('senhaInput').focus()">
+    <input type="password" class="login-input" id="senhaInput" placeholder="Senha" onkeydown="if(event.key==='Enter') entrar()">
+    <div class="login-err" id="loginErr">⚠ E-mail ou senha incorretos.</div>
+    <button class="login-btn" onclick="entrar()" id="btnEntrar">Entrar →</button>
+    <a href="#" onclick="esqueciSenha();return false;" style="font-size:13px;color:var(--ink-muted);text-decoration:underline">Esqueci minha senha</a>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalRedefinirSenha">
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-header">
+      <h3>🔑 Criar nova senha</h3>
+      <button class="modal-close" onclick="document.getElementById('modalRedefinirSenha').classList.remove('show')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nova senha</label><input type="password" id="novaSenhaInput" placeholder="Mínimo 6 caracteres"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary btn-full" onclick="salvarNovaSenha()">✓ Salvar nova senha</button>
+    </div>
+  </div>
+</div>
+
+<nav class="navbar">
+  <div class="nav-brand">
+    <div class="nav-icon">A</div>
+    <div class="nav-name">Auto<span>IA</span></div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchView('posvenda')">💬 Pós-venda</button>
+    <button class="nav-tab" onclick="switchView('orcamentos')">📄 Orçamentos</button>
+    <button class="nav-tab" onclick="switchView('atendimento')">🤖 Atendimento</button>
+    <button class="nav-tab" onclick="switchView('financeiro')">💰 Financeiro</button>
+    <button class="nav-tab" onclick="switchView('configurar')">⚙️ Configurar</button>
+  </div>
+  <div class="nav-right">
+    <button class="logout-btn" onclick="sair()">Sair</button>
+  </div>
+</nav>
+
+<!-- MÓDULO: PÓS-VENDA -->
+<div class="view active" id="viewPosvenda">
+  <div class="page">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-val" id="pvStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Clientes ativos</div></div>
+      <div class="stat-card"><div class="stat-val" id="pvStatHoje" style="color:var(--laranja)">0</div><div class="stat-label">Alertas hoje</div></div>
+      <div class="stat-card"><div class="stat-val" id="pvStatEnviados" style="color:var(--green)">0</div><div class="stat-label">Msgs enviadas</div></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h2 style="font-size:18px;font-weight:800">Clientes em acompanhamento</h2>
+      <button class="btn btn-primary" onclick="abrirModalCliente()">➕ Novo cliente</button>
+    </div>
+    <div class="item-list" id="pvClientesList">
+      <div class="empty-state"><div>👥</div><p>Nenhum cliente cadastrado ainda.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- MÓDULO: ORÇAMENTOS (em construção) -->
+<div class="view" id="viewOrcamentos">
+  <div class="page">
+    <div class="construcao"><div>📄</div><h2 style="font-size:18px;font-weight:800;margin-bottom:8px">Módulo de Orçamentos</h2><p>Em construção — chegando em breve.</p></div>
+  </div>
+</div>
+
+<!-- MÓDULO: ATENDIMENTO (em construção) -->
+<div class="view" id="viewAtendimento">
+  <div class="page">
+    <div class="construcao"><div>🤖</div><h2 style="font-size:18px;font-weight:800;margin-bottom:8px">Módulo de Atendimento</h2><p>Em construção — chegando em breve.</p></div>
+  </div>
+</div>
+
+<!-- MÓDULO: FINANCEIRO -->
+<div class="view" id="viewFinanceiro">
+  <div class="page">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-val" id="finEntradas" style="color:var(--green)">R$ 0</div><div class="stat-label">Entradas do mês</div></div>
+      <div class="stat-card"><div class="stat-val" id="finSaidas" style="color:var(--red)">R$ 0</div><div class="stat-label">Saídas do mês</div></div>
+      <div class="stat-card"><div class="stat-val" id="finSaldo">R$ 0</div><div class="stat-label">Saldo do mês</div></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h2 style="font-size:18px;font-weight:800">Movimentações</h2>
+      <button class="btn btn-primary" onclick="abrirModalTransacao()">➕ Nova movimentação</button>
+    </div>
+    <div class="item-list" id="finList">
+      <div class="empty-state"><div>💰</div><p>Nenhuma movimentação cadastrada ainda.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- MÓDULO: CONFIGURAR -->
+<div class="view" id="viewConfigurar">
+  <div class="page">
+    <div class="card">
+      <div class="card-title"><div class="card-icon">🏢</div> Dados da empresa</div>
+      <div class="form-row">
+        <div class="form-group"><label>Nome da empresa</label><input type="text" id="cfgEmpresa" placeholder="Ex: Mariana Reformas"></div>
+        <div class="form-group"><label>WhatsApp</label><input type="text" id="cfgWhatsapp" placeholder="(11) 99999-9999"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="card-icon">🔑</div> Sua senha de acesso</div>
+      <div class="form-row">
+        <div class="form-group"><label>Nova senha</label><input type="password" id="cfgNovaSenha" placeholder="Mínimo 6 caracteres"></div>
+        <div class="form-group" style="display:flex;align-items:flex-end"><button class="btn btn-outline btn-full" onclick="trocarSenhaLogado()">Trocar senha</button></div>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="salvarConfig()">✓ Salvar configurações</button>
+  </div>
+</div>
+
+<!-- MODAL: NOVO CLIENTE (Pós-venda) -->
+<div class="modal-overlay" id="modalCliente">
+  <div class="modal-card">
+    <div class="modal-header"><h3>➕ Cadastrar cliente</h3><button class="modal-close" onclick="fecharModalCliente()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nome do cliente <span class="req">*</span></label><input type="text" id="cNome" placeholder="Ex: João Silva"></div>
+      <div class="form-group"><label>E-mail <span class="req">*</span></label><input type="email" id="cEmail" placeholder="joao@email.com"></div>
+      <div class="form-group"><label>Data de entrega <span class="req">*</span></label><input type="date" id="cDataEntrega"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModalCliente()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarCliente()">✓ Cadastrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NOVA TRANSAÇÃO (Financeiro) -->
+<div class="modal-overlay" id="modalTransacao">
+  <div class="modal-card">
+    <div class="modal-header"><h3>➕ Nova movimentação</h3><button class="modal-close" onclick="fecharModalTransacao()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Tipo</label>
+        <select id="tTipo"><option value="entrada">Entrada (recebi)</option><option value="saida">Saída (paguei)</option></select>
+      </div>
+      <div class="form-group"><label>Descrição <span class="req">*</span></label><input type="text" id="tDescricao" placeholder="Ex: Pagamento cliente João"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Valor <span class="req">*</span></label><input type="text" id="tValor" placeholder="Ex: 500,00"></div>
+        <div class="form-group"><label>Data <span class="req">*</span></label><input type="date" id="tData"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModalTransacao()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarTransacao()">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPA_URL = 'https://torrawsuaertopubpesw.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvcnJhd3N1YWVydG9wdWJwZXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MDA1ODQsImV4cCI6MjA5NTQ3NjU4NH0.CP2UfWVD_uoy6_S-WErq8H5fmTyaFO2X5wIzX_1HnqQ';
+let supa = null;
+let currentUser = null;
+let empresa = {};
+let clientesPV = [];
+let transacoesFin = [];
+
+// ── TOAST ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── LOGIN ──
+async function entrar() {
+  const email = document.getElementById('emailInput').value.trim();
+  const senha = document.getElementById('senhaInput').value.trim();
+  if (!email || !senha) {
+    document.getElementById('loginErr').textContent = '⚠ Preencha e-mail e senha.';
+    document.getElementById('loginErr').style.display = 'block';
+    return;
+  }
+  document.getElementById('btnEntrar').disabled = true;
+  document.getElementById('btnEntrar').textContent = 'Entrando...';
+  const { data, error } = await supa.auth.signInWithPassword({ email, password: senha });
+  document.getElementById('btnEntrar').disabled = false;
+  document.getElementById('btnEntrar').textContent = 'Entrar →';
+  if (error || !data.user) {
+    document.getElementById('loginErr').textContent = '⚠ E-mail ou senha incorretos.';
+    document.getElementById('loginErr').style.display = 'block';
+    return;
+  }
+  currentUser = data.user;
+  await iniciarSessao();
+}
+
+async function iniciarSessao() {
+  document.getElementById('loginScreen').style.display = 'none';
+  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro()]);
+  carregarConfig();
+  renderClientesPV();
+  renderFinanceiro();
+}
+
+async function sair() {
+  await supa.auth.signOut();
+  currentUser = null; clientesPV = []; transacoesFin = []; empresa = {};
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('emailInput').value = '';
+  document.getElementById('senhaInput').value = '';
+}
+
+async function esqueciSenha() {
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email) {
+    document.getElementById('loginErr').textContent = '⚠ Digite seu e-mail no campo acima primeiro.';
+    document.getElementById('loginErr').style.display = 'block';
+    return;
+  }
+  const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+  if (error) {
+    document.getElementById('loginErr').textContent = '⚠ Não foi possível enviar o e-mail.';
+    document.getElementById('loginErr').style.display = 'block';
+  } else {
+    document.getElementById('loginErr').style.display = 'none';
+    alert('✓ Enviamos um link para ' + email + '. Abra seu e-mail para criar uma nova senha.');
+  }
+}
+
+async function salvarNovaSenha() {
+  const novaSenha = document.getElementById('novaSenhaInput').value.trim();
+  if (!novaSenha || novaSenha.length < 6) { showToast('⚠ A senha precisa ter no mínimo 6 caracteres.'); return; }
+  const { error } = await supa.auth.updateUser({ password: novaSenha });
+  if (error) { showToast('⚠ Erro ao salvar a nova senha.'); }
+  else {
+    document.getElementById('modalRedefinirSenha').classList.remove('show');
+    showToast('✓ Senha alterada com sucesso!');
+  }
+}
+
+async function trocarSenhaLogado() {
+  const novaSenha = document.getElementById('cfgNovaSenha').value.trim();
+  if (!novaSenha || novaSenha.length < 6) { showToast('⚠ A senha precisa ter no mínimo 6 caracteres.'); return; }
+  const { error } = await supa.auth.updateUser({ password: novaSenha });
+  if (error) { showToast('⚠ Erro ao trocar a senha.'); }
+  else { document.getElementById('cfgNovaSenha').value = ''; showToast('✓ Senha alterada com sucesso!'); }
+}
+
+// ── VIEWS ──
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const map = { posvenda: 0, orcamentos: 1, atendimento: 2, financeiro: 3, configurar: 4 };
+  document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1)).classList.add('active');
+  document.querySelectorAll('.nav-tab')[map[view]].classList.add('active');
+}
+
+// ── CONFIG ──
+async function syncConfig() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('configuracoes').select('dados').eq('user_id', currentUser.id).eq('sistema', 'autoia').single();
+    if (data) empresa = data.dados;
+  } catch(e) { console.log('Sync config error:', e); }
+}
+
+function carregarConfig() {
+  document.getElementById('cfgEmpresa').value = empresa.nome || '';
+  document.getElementById('cfgWhatsapp').value = empresa.whatsapp || '';
+  document.getElementById('cfgNovaSenha').value = '';
+}
+
+async function salvarConfig() {
+  empresa = {
+    nome: document.getElementById('cfgEmpresa').value.trim(),
+    whatsapp: document.getElementById('cfgWhatsapp').value.trim()
+  };
+  try {
+    await supa.from('configuracoes').upsert({ id: currentUser.id + '_autoia', user_id: currentUser.id, sistema: 'autoia', dados: empresa, atualizado_em: new Date().toISOString() });
+    showToast('✓ Configurações salvas!');
+  } catch(e) { showToast('⚠ Erro ao salvar.'); }
+}
+
+// ── PÓS-VENDA ──
+async function syncClientesPV() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('flowia_clientes').select('*').eq('user_id', currentUser.id).order('criado_em', { ascending: false });
+    if (data) clientesPV = data.map(r => r.dados);
+  } catch(e) { console.log('Sync clientes error:', e); }
+}
+
+function abrirModalCliente() { document.getElementById('modalCliente').classList.add('show'); }
+function fecharModalCliente() {
+  document.getElementById('modalCliente').classList.remove('show');
+  ['cNome','cEmail','cDataEntrega'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function salvarCliente() {
+  const nome = document.getElementById('cNome').value.trim();
+  const email = document.getElementById('cEmail').value.trim();
+  const dataEntrega = document.getElementById('cDataEntrega').value;
+  if (!nome || !email || !dataEntrega) { showToast('⚠ Preencha todos os campos!'); return; }
+
+  const entrega = new Date(dataEntrega + 'T12:00:00');
+  const d7 = new Date(entrega); d7.setDate(d7.getDate() + 7);
+  const d15 = new Date(entrega); d15.setDate(d15.getDate() + 15);
+  const d30 = new Date(entrega); d30.setDate(d30.getDate() + 30);
+
+  const cliente = {
+    id: Date.now().toString(), nome, email, dataEntrega,
+    steps: [
+      { dia: 7, tema: 'Feedback do serviço', data: d7.toISOString().split('T')[0], status: 'pendente' },
+      { dia: 15, tema: 'Avaliação no Google', data: d15.toISOString().split('T')[0], status: 'pendente' },
+      { dia: 30, tema: 'Nova oferta', data: d30.toISOString().split('T')[0], status: 'pendente' }
+    ]
+  };
+  clientesPV.unshift(cliente);
+  try {
+    await supa.from('flowia_clientes').upsert({ id: cliente.id, user_id: currentUser.id, dados: cliente, atualizado_em: new Date().toISOString() });
+  } catch(e) { console.log(e); }
+  fecharModalCliente();
+  renderClientesPV();
+  showToast('✓ Cliente cadastrado!');
+}
+
+function fmt(d) { const [y,m,day] = d.split('-'); return day + '/' + m + '/' + y; }
+
+function renderClientesPV() {
+  const hoje = new Date().toISOString().split('T')[0];
+  document.getElementById('pvStatTotal').textContent = clientesPV.length;
+  let alertasHoje = 0, enviados = 0;
+  clientesPV.forEach(c => c.steps.forEach(s => {
+    if (s.status === 'enviado') enviados++;
+    if (s.status === 'pendente' && s.data <= hoje) alertasHoje++;
+  }));
+  document.getElementById('pvStatHoje').textContent = alertasHoje;
+  document.getElementById('pvStatEnviados').textContent = enviados;
+
+  const lista = document.getElementById('pvClientesList');
+  if (!clientesPV.length) {
+    lista.innerHTML = '<div class="empty-state"><div>👥</div><p>Nenhum cliente cadastrado ainda.</p></div>';
+    return;
+  }
+  lista.innerHTML = '<div class="list-header"><h3>Todos os clientes (' + clientesPV.length + ')</h3></div>' +
+    clientesPV.map(c => {
+      const pendentes = c.steps.filter(s => s.status === 'pendente' && s.data <= hoje).length;
+      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + c.nome + '</div><div class="item-sub">' + c.email + ' • Entregue em ' + fmt(c.dataEntrega) + '</div></div>' +
+        (pendentes > 0 ? '<span style="font-size:12px;font-weight:700;color:var(--laranja)">' + pendentes + ' pendente(s)</span>' : '<span style="font-size:12px;color:var(--green)">✓ em dia</span>') + '</div>';
+    }).join('');
+}
+
+// ── FINANCEIRO ──
+async function syncFinanceiro() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('financeiro_transacoes').select('*').eq('user_id', currentUser.id).order('criado_em', { ascending: false });
+    if (data) transacoesFin = data.map(r => r.dados);
+  } catch(e) { console.log('Sync financeiro error:', e); }
+}
+
+function abrirModalTransacao() {
+  document.getElementById('tData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('modalTransacao').classList.add('show');
+}
+function fecharModalTransacao() {
+  document.getElementById('modalTransacao').classList.remove('show');
+  ['tDescricao','tValor'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function salvarTransacao() {
+  const tipo = document.getElementById('tTipo').value;
+  const descricao = document.getElementById('tDescricao').value.trim();
+  const valorTexto = document.getElementById('tValor').value.trim().replace(',', '.');
+  const data = document.getElementById('tData').value;
+  const valor = parseFloat(valorTexto);
+
+  if (!descricao || !valor || !data || isNaN(valor)) { showToast('⚠ Preencha todos os campos corretamente!'); return; }
+
+  const transacao = { id: Date.now().toString(), tipo, descricao, valor, data };
+  transacoesFin.unshift(transacao);
+  try {
+    await supa.from('financeiro_transacoes').upsert({ id: transacao.id, user_id: currentUser.id, dados: transacao, atualizado_em: new Date().toISOString() });
+  } catch(e) { console.log(e); }
+  fecharModalTransacao();
+  renderFinanceiro();
+  showToast('✓ Movimentação salva!');
+}
+
+async function removerTransacao(id) {
+  if (!confirm('Remover esta movimentação?')) return;
+  transacoesFin = transacoesFin.filter(t => t.id !== id);
+  try { await supa.from('financeiro_transacoes').delete().eq('id', id).eq('user_id', currentUser.id); } catch(e) { console.log(e); }
+  renderFinanceiro();
+  showToast('Removido.');
+}
+
+function formatarMoeda(v) { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function renderFinanceiro() {
+  const hoje = new Date();
+  const mesAtual = hoje.toISOString().slice(0, 7);
+  const doMes = transacoesFin.filter(t => t.data.startsWith(mesAtual));
+  const entradas = doMes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0);
+  const saidas = doMes.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0);
+  const saldo = entradas - saidas;
+
+  document.getElementById('finEntradas').textContent = formatarMoeda(entradas);
+  document.getElementById('finSaidas').textContent = formatarMoeda(saidas);
+  const saldoEl = document.getElementById('finSaldo');
+  saldoEl.textContent = formatarMoeda(saldo);
+  saldoEl.style.color = saldo >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const lista = document.getElementById('finList');
+  if (!transacoesFin.length) {
+    lista.innerHTML = '<div class="empty-state"><div>💰</div><p>Nenhuma movimentação cadastrada ainda.</p></div>';
+    return;
+  }
+  lista.innerHTML = '<div class="list-header"><h3>Últimas movimentações</h3></div>' +
+    transacoesFin.slice(0, 50).map(t => {
+      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + t.descricao + '</div><div class="item-sub">' + fmt(t.data) + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:10px"><span class="item-valor ' + t.tipo + '">' + (t.tipo === 'entrada' ? '+' : '-') + ' ' + formatarMoeda(t.valor) + '</span>' +
+        '<button class="btn btn-red" onclick="removerTransacao(\'' + t.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>';
+    }).join('');
+}
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', async function() {
+  supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  if (window.location.hash.includes('type=recovery')) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('modalRedefinirSenha').classList.add('show');
+    return;
+  }
+
+  const { data: { session } } = await supa.auth.getSession();
+  if (session && session.user) {
+    currentUser = session.user;
+    await iniciarSessao();
+  }
+});
+</script>
