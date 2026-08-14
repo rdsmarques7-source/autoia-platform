@@ -185,10 +185,21 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   </div>
 </div>
 
-<!-- MÓDULO: ORÇAMENTOS (em construção) -->
+<!-- MÓDULO: ORÇAMENTOS -->
 <div class="view" id="viewOrcamentos">
   <div class="page">
-    <div class="construcao"><div>📄</div><h2 style="font-size:18px;font-weight:800;margin-bottom:8px">Módulo de Orçamentos</h2><p>Em construção — chegando em breve.</p></div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-val" id="orcStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Total enviados</div></div>
+      <div class="stat-card"><div class="stat-val" id="orcStatAprovados" style="color:var(--green)">0</div><div class="stat-label">Aprovados</div></div>
+      <div class="stat-card"><div class="stat-val" id="orcStatPendentes" style="color:#854d0e">0</div><div class="stat-label">Aguardando</div></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h2 style="font-size:18px;font-weight:800">Orçamentos</h2>
+      <button class="btn btn-primary" onclick="abrirModalOrcamento()">➕ Novo orçamento</button>
+    </div>
+    <div class="item-list" id="orcList">
+      <div class="empty-state"><div>📄</div><p>Nenhum orçamento criado ainda.</p></div>
+    </div>
   </div>
 </div>
 
@@ -275,6 +286,53 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   </div>
 </div>
 
+<!-- MODAL: NOVO ORÇAMENTO -->
+<div class="modal-overlay" id="modalOrcamento">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-header"><h3>➕ Novo orçamento</h3><button class="modal-close" onclick="fecharModalOrcamento()">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Nome do cliente <span class="req">*</span></label><input type="text" id="oNome" placeholder="Ex: João Silva"></div>
+        <div class="form-group"><label>WhatsApp do cliente</label><input type="text" id="oWhatsapp" placeholder="(11) 99999-9999"></div>
+      </div>
+      <div class="form-group"><label>Descrição do serviço <span class="req">*</span></label>
+        <textarea id="oServico" placeholder="Ex: pintura de sala e cozinha, 40m²" style="min-height:60px"></textarea>
+      </div>
+      <div style="text-align:right;margin-bottom:12px"><button class="btn btn-outline" onclick="gerarDescricaoIA()" id="btnGerarDescricaoIA" style="font-size:12px;padding:6px 12px">🤖 Melhorar texto com IA</button></div>
+
+      <label style="display:block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Itens do orçamento</label>
+      <div id="itensOrcamento"></div>
+      <button class="btn btn-outline" onclick="adicionarItemOrcamento()" style="margin-top:8px;font-size:12px">➕ Adicionar item</button>
+
+      <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--ink-muted)">Total: </span>
+        <span style="font-size:20px;font-weight:800;color:var(--laranja)" id="oTotalPreview">R$ 0,00</span>
+      </div>
+
+      <div class="form-group" style="margin-top:12px"><label>Válido até</label><input type="date" id="oValidade"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModalOrcamento()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarOrcamento()">✓ Criar e gerar link</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LINK GERADO -->
+<div class="modal-overlay" id="modalLinkOrcamento">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-header"><h3>🔗 Orçamento criado!</h3><button class="modal-close" onclick="document.getElementById('modalLinkOrcamento').classList.remove('show')">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-muted);margin-bottom:1rem">Envie esse link para o cliente aprovar online:</p>
+      <div class="form-group"><input type="text" id="oLinkGerado" readonly style="font-size:12px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="copiarLinkOrcamento()">📋 Copiar link</button>
+      <button class="btn btn-primary" onclick="enviarLinkWhatsApp()" style="background:#25d366">📱 Enviar por WhatsApp</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ENVIAR MENSAGEM (Pós-venda) -->
 <div class="modal-overlay" id="modalMensagem">
   <div class="modal-card">
@@ -345,10 +403,235 @@ async function entrar() {
 
 async function iniciarSessao() {
   document.getElementById('loginScreen').style.display = 'none';
-  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro()]);
+  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos()]);
   carregarConfig();
   renderClientesPV();
   renderFinanceiro();
+  renderOrcamentos();
+}
+
+// ── ORÇAMENTOS ──
+let orcamentosList = [];
+let itensOrcamentoAtual = [];
+
+async function syncOrcamentos() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('orcamentos').select('*').eq('user_id', currentUser.id).order('criado_em', { ascending: false });
+    if (data) orcamentosList = data.map(r => ({ ...r.dados, id: r.id, status: r.status }));
+  } catch(e) { console.log('Sync orçamentos error:', e); }
+}
+
+function abrirModalOrcamento() {
+  itensOrcamentoAtual = [{ descricao: '', valor: '' }];
+  renderItensOrcamento();
+  document.getElementById('oValidade').value = new Date(Date.now() + 7*86400000).toISOString().split('T')[0];
+  document.getElementById('modalOrcamento').classList.add('show');
+}
+function fecharModalOrcamento() {
+  document.getElementById('modalOrcamento').classList.remove('show');
+  ['oNome','oWhatsapp','oServico'].forEach(id => document.getElementById(id).value = '');
+}
+
+function adicionarItemOrcamento() {
+  itensOrcamentoAtual.push({ descricao: '', valor: '' });
+  renderItensOrcamento();
+}
+function removerItemOrcamento(i) {
+  itensOrcamentoAtual.splice(i, 1);
+  renderItensOrcamento();
+}
+function atualizarItemOrcamento(i, campo, valor) {
+  itensOrcamentoAtual[i][campo] = valor;
+  atualizarTotalPreview();
+}
+function atualizarTotalPreview() {
+  const total = itensOrcamentoAtual.reduce((s, it) => s + (parseFloat((it.valor || '0').toString().replace(',', '.')) || 0), 0);
+  document.getElementById('oTotalPreview').textContent = formatarMoeda(total);
+}
+function renderItensOrcamento() {
+  const cont = document.getElementById('itensOrcamento');
+  cont.innerHTML = itensOrcamentoAtual.map((it, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+      <input type="text" placeholder="Descrição do item" value="${it.descricao}" oninput="atualizarItemOrcamento(${i},'descricao',this.value)" style="flex:2;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      <input type="text" placeholder="Valor" value="${it.valor}" oninput="atualizarItemOrcamento(${i},'valor',this.value)" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      ${itensOrcamentoAtual.length > 1 ? '<button onclick="removerItemOrcamento(' + i + ')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px">✕</button>' : '<span style="width:16px"></span>'}
+    </div>
+  `).join('');
+  atualizarTotalPreview();
+}
+
+async function gerarDescricaoIA() {
+  const textoAtual = document.getElementById('oServico').value.trim();
+  if (!textoAtual) { showToast('⚠ Descreva brevemente o serviço primeiro.'); return; }
+  document.getElementById('btnGerarDescricaoIA').disabled = true;
+  document.getElementById('btnGerarDescricaoIA').textContent = 'Gerando...';
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: `Reescreva essa descrição de serviço de forma mais profissional e clara, para um orçamento formal. Mantenha curto (2-3 frases). Descrição original: "${textoAtual}". Retorne só o texto reescrito, sem comentários.` }],
+        max_tokens: 200, temperature: 0.6
+      })
+    });
+    const data = await res.json();
+    const texto = data.choices?.[0]?.message?.content || textoAtual;
+    document.getElementById('oServico').value = texto.trim();
+  } catch(e) { showToast('⚠ Erro ao gerar com IA.'); }
+  document.getElementById('btnGerarDescricaoIA').disabled = false;
+  document.getElementById('btnGerarDescricaoIA').textContent = '🤖 Melhorar texto com IA';
+}
+
+function gerarIdPublico() {
+  return 'orc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+let ultimoOrcamentoCriado = null;
+
+async function salvarOrcamento() {
+  const nome = document.getElementById('oNome').value.trim();
+  const whatsapp = document.getElementById('oWhatsapp').value.trim();
+  const servico = document.getElementById('oServico').value.trim();
+  const validade = document.getElementById('oValidade').value;
+  const itensValidos = itensOrcamentoAtual.filter(it => it.descricao.trim() && it.valor);
+
+  if (!nome || !servico || !itensValidos.length) { showToast('⚠ Preencha nome, serviço e pelo menos 1 item!'); return; }
+
+  const total = itensValidos.reduce((s, it) => s + (parseFloat(it.valor.toString().replace(',', '.')) || 0), 0);
+  const id = gerarIdPublico();
+  const dados = {
+    nome, whatsapp, servico, itens: itensValidos, total, validade,
+    empresaNome: empresa.nome || '', empresaWhatsapp: empresa.whatsapp || '',
+    criadoEm: new Date().toISOString()
+  };
+
+  try {
+    await supa.from('orcamentos').insert({ id, user_id: currentUser.id, status: 'pendente', dados });
+  } catch(e) { showToast('⚠ Erro ao salvar orçamento.'); return; }
+
+  orcamentosList.unshift({ ...dados, id, status: 'pendente' });
+  fecharModalOrcamento();
+  renderOrcamentos();
+
+  const link = window.location.origin + window.location.pathname + '?orc=' + id;
+  ultimoOrcamentoCriado = { link, whatsapp };
+  document.getElementById('oLinkGerado').value = link;
+  document.getElementById('modalLinkOrcamento').classList.add('show');
+}
+
+function copiarLinkOrcamento() {
+  navigator.clipboard.writeText(document.getElementById('oLinkGerado').value).then(() => showToast('📋 Link copiado!'));
+}
+function enviarLinkWhatsApp() {
+  const link = document.getElementById('oLinkGerado').value;
+  const num = ultimoOrcamentoCriado.whatsapp ? ultimoOrcamentoCriado.whatsapp.replace(/\D/g, '') : '';
+  const msg = `Olá! Segue o orçamento para o serviço solicitado. Você pode conferir e aprovar direto por aqui: ${link}`;
+  const url = num ? 'https://wa.me/55' + num + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+}
+
+async function removerOrcamento(id) {
+  if (!confirm('Remover este orçamento?')) return;
+  orcamentosList = orcamentosList.filter(o => o.id !== id);
+  try { await supa.from('orcamentos').delete().eq('id', id).eq('user_id', currentUser.id); } catch(e) { console.log(e); }
+  renderOrcamentos();
+  showToast('Orçamento removido.');
+}
+
+function renderOrcamentos() {
+  document.getElementById('orcStatTotal').textContent = orcamentosList.length;
+  document.getElementById('orcStatAprovados').textContent = orcamentosList.filter(o => o.status === 'aprovado').length;
+  document.getElementById('orcStatPendentes').textContent = orcamentosList.filter(o => o.status === 'pendente').length;
+
+  const lista = document.getElementById('orcList');
+  if (!orcamentosList.length) {
+    lista.innerHTML = '<div class="empty-state"><div>📄</div><p>Nenhum orçamento criado ainda.</p></div>';
+    return;
+  }
+  const badges = { pendente: ['#854d0e','#fef9c3','⏳ Aguardando'], aprovado: ['var(--green)','var(--green-bg)','✓ Aprovado'], recusado: ['var(--red)','var(--red-bg)','✕ Recusado'] };
+  lista.innerHTML = '<div class="list-header"><h3>Todos os orçamentos (' + orcamentosList.length + ')</h3></div>' +
+    orcamentosList.map(o => {
+      const [cor, bg, texto] = badges[o.status] || badges.pendente;
+      const link = window.location.origin + window.location.pathname + '?orc=' + o.id;
+      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + o.nome + '</div><div class="item-sub">' + o.servico.slice(0,60) + (o.servico.length > 60 ? '...' : '') + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:10px"><span class="item-valor">' + formatarMoeda(o.total) + '</span>' +
+        '<span style="font-size:11px;font-weight:700;color:' + cor + ';background:' + bg + ';padding:4px 10px;border-radius:20px;white-space:nowrap">' + texto + '</span>' +
+        '<button class="btn btn-outline" onclick="navigator.clipboard.writeText(\'' + link + '\');showToast(\'📋 Link copiado!\')" style="padding:4px 8px;font-size:11px">🔗</button>' +
+        '<button class="btn btn-red" onclick="removerOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>';
+    }).join('');
+}
+
+// ── TELA PÚBLICA DE APROVAÇÃO (cliente final, sem login) ──
+async function mostrarTelaPublicaOrcamento(orcId) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.body.innerHTML = '<div id="orcPublico" style="max-width:560px;margin:0 auto;padding:2rem"><div style="text-align:center;padding:3rem;color:#a1a1aa">Carregando orçamento...</div></div>';
+
+  const { data, error } = await supa.from('orcamentos').select('*').eq('id', orcId).single();
+  const cont = document.getElementById('orcPublico');
+  if (error || !data) {
+    cont.innerHTML = '<div style="text-align:center;padding:3rem"><div style="font-size:40px">😕</div><p style="color:#a1a1aa;margin-top:1rem">Orçamento não encontrado ou link inválido.</p></div>';
+    return;
+  }
+
+  const o = data.dados;
+  const status = data.status;
+
+  const itensHtml = o.itens.map(it => `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e4e4e7"><span style="font-size:14px">${it.descricao}</span><span style="font-size:14px;font-weight:700">${formatarMoeda(parseFloat(it.valor))}</span></div>`).join('');
+
+  let acoesHtml = '';
+  if (status === 'pendente') {
+    acoesHtml = `
+      <div style="margin-top:1.5rem">
+        <input type="text" id="pubNomeAprova" placeholder="Digite seu nome completo para confirmar" style="width:100%;padding:12px;border:1.5px solid #e4e4e7;border-radius:10px;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;margin-bottom:10px;box-sizing:border-box">
+        <div style="display:flex;gap:10px">
+          <button onclick="responderOrcamentoPublico('${orcId}','recusado')" style="flex:1;padding:12px;border:1.5px solid #e4e4e7;background:white;border-radius:10px;font-weight:600;cursor:pointer;font-family:inherit">Recusar</button>
+          <button onclick="responderOrcamentoPublico('${orcId}','aprovado')" style="flex:2;padding:12px;border:none;background:#f97316;color:white;border-radius:10px;font-weight:700;cursor:pointer;font-family:inherit">✓ Aprovar orçamento</button>
+        </div>
+      </div>`;
+  } else if (status === 'aprovado') {
+    acoesHtml = `<div style="margin-top:1.5rem;text-align:center;padding:1rem;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700">✓ Orçamento aprovado${o.aprovadoPor ? ' por ' + o.aprovadoPor : ''}!</div>`;
+  } else if (status === 'recusado') {
+    acoesHtml = `<div style="margin-top:1.5rem;text-align:center;padding:1rem;background:#fef2f2;border-radius:10px;color:#dc2626;font-weight:700">Orçamento recusado.</div>`;
+  }
+
+  cont.innerHTML = `
+    <div style="background:white;border:1px solid #e4e4e7;border-radius:16px;padding:2rem;box-shadow:0 4px 20px rgba(0,0,0,0.05)">
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:13px;color:#a1a1aa;text-transform:uppercase;letter-spacing:1px">Orçamento de</div>
+        <div style="font-size:20px;font-weight:800">${o.empresaNome || 'Prestador de serviço'}</div>
+      </div>
+      <div style="font-size:13px;color:#a1a1aa;margin-bottom:4px">Cliente</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:1rem">${o.nome}</div>
+      <div style="font-size:13px;color:#a1a1aa;margin-bottom:4px">Serviço</div>
+      <div style="font-size:14px;margin-bottom:1.5rem">${o.servico}</div>
+      <div style="font-size:13px;color:#a1a1aa;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Itens</div>
+      ${itensHtml}
+      <div style="display:flex;justify-content:space-between;padding-top:12px;margin-top:8px">
+        <span style="font-size:16px;font-weight:800">Total</span>
+        <span style="font-size:22px;font-weight:800;color:#f97316">${formatarMoeda(o.total)}</span>
+      </div>
+      ${o.validade ? '<div style="font-size:12px;color:#a1a1aa;margin-top:8px">Válido até ' + fmt(o.validade) + '</div>' : ''}
+      ${acoesHtml}
+    </div>
+  `;
+}
+
+async function responderOrcamentoPublico(orcId, novoStatus) {
+  const nomeInput = document.getElementById('pubNomeAprova');
+  if (novoStatus === 'aprovado' && (!nomeInput || !nomeInput.value.trim())) {
+    alert('Por favor, digite seu nome para confirmar.');
+    return;
+  }
+  const { data } = await supa.from('orcamentos').select('dados').eq('id', orcId).single();
+  const dadosAtualizados = { ...data.dados };
+  if (novoStatus === 'aprovado') {
+    dadosAtualizados.aprovadoPor = nomeInput.value.trim();
+    dadosAtualizados.aprovadoEm = new Date().toISOString();
+  }
+  await supa.from('orcamentos').update({ status: novoStatus, dados: dadosAtualizados }).eq('id', orcId);
+  mostrarTelaPublicaOrcamento(orcId);
 }
 
 async function sair() {
@@ -728,6 +1011,14 @@ function renderFinanceiro() {
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async function() {
   supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  // Se for um link público de orçamento, mostra a tela de aprovação (sem exigir login)
+  const params = new URLSearchParams(window.location.search);
+  const orcId = params.get('orc');
+  if (orcId) {
+    await mostrarTelaPublicaOrcamento(orcId);
+    return;
+  }
 
   if (window.location.hash.includes('type=recovery')) {
     document.getElementById('loginScreen').style.display = 'none';
