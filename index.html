@@ -195,7 +195,10 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Orçamentos</h2>
-      <button class="btn btn-primary" onclick="abrirModalOrcamento()">➕ Novo orçamento</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="abrirModalCatalogo()">📦 Meus produtos/serviços</button>
+        <button class="btn btn-primary" onclick="abrirModalOrcamento()">➕ Novo orçamento</button>
+      </div>
     </div>
     <div class="item-list" id="orcList">
       <div class="empty-state"><div>📄</div><p>Nenhum orçamento criado ainda.</p></div>
@@ -286,6 +289,25 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   </div>
 </div>
 
+<!-- MODAL: CATÁLOGO DE PRODUTOS/SERVIÇOS -->
+<div class="modal-overlay" id="modalCatalogo">
+  <div class="modal-card" style="max-width:500px">
+    <div class="modal-header"><h3>📦 Meus produtos/serviços</h3><button class="modal-close" onclick="document.getElementById('modalCatalogo').classList.remove('show')">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-muted);margin-bottom:1rem">Cadastre aqui os itens que você mais usa em orçamentos. Depois é só clicar pra adicionar, sem digitar de novo.</p>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label>Nome do item</label><input type="text" id="catNome" placeholder="Ex: Pintura por m²"></div>
+        <div class="form-group"><label>Valor</label><input type="text" id="catValor" placeholder="Ex: 35,00"></div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="adicionarItemCatalogo()" style="margin-bottom:16px">➕ Adicionar ao catálogo</button>
+      <div id="catalogoLista"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-full" onclick="document.getElementById('modalCatalogo').classList.remove('show')">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: NOVO ORÇAMENTO -->
 <div class="modal-overlay" id="modalOrcamento">
   <div class="modal-card" style="max-width:560px">
@@ -301,6 +323,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
       <div style="text-align:right;margin-bottom:12px"><button class="btn btn-outline" onclick="gerarDescricaoIA()" id="btnGerarDescricaoIA" style="font-size:12px;padding:6px 12px">🤖 Melhorar texto com IA</button></div>
 
       <label style="display:block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Itens do orçamento</label>
+      <div id="catalogoRapido" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
       <div id="itensOrcamento"></div>
       <button class="btn btn-outline" onclick="adicionarItemOrcamento()" style="margin-top:8px;font-size:12px">➕ Adicionar item</button>
 
@@ -403,7 +426,7 @@ async function entrar() {
 
 async function iniciarSessao() {
   document.getElementById('loginScreen').style.display = 'none';
-  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos()]);
+  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos(), syncCatalogo()]);
   carregarConfig();
   renderClientesPV();
   renderFinanceiro();
@@ -425,6 +448,7 @@ async function syncOrcamentos() {
 function abrirModalOrcamento() {
   itensOrcamentoAtual = [{ descricao: '', valor: '' }];
   renderItensOrcamento();
+  renderCatalogoRapido();
   document.getElementById('oValidade').value = new Date(Date.now() + 7*86400000).toISOString().split('T')[0];
   document.getElementById('modalOrcamento').classList.add('show');
 }
@@ -632,6 +656,81 @@ async function responderOrcamentoPublico(orcId, novoStatus) {
   }
   await supa.from('orcamentos').update({ status: novoStatus, dados: dadosAtualizados }).eq('id', orcId);
   mostrarTelaPublicaOrcamento(orcId);
+}
+
+// ── CATÁLOGO DE PRODUTOS/SERVIÇOS ──
+let catalogoItens = [];
+
+async function syncCatalogo() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('catalogo_itens').select('*').eq('user_id', currentUser.id).order('criado_em', { ascending: true });
+    if (data) catalogoItens = data.map(r => ({ ...r.dados, id: r.id }));
+  } catch(e) { console.log('Sync catálogo error:', e); }
+}
+
+function abrirModalCatalogo() {
+  renderCatalogoLista();
+  document.getElementById('modalCatalogo').classList.add('show');
+}
+
+async function adicionarItemCatalogo() {
+  const nome = document.getElementById('catNome').value.trim();
+  const valor = document.getElementById('catValor').value.trim();
+  if (!nome || !valor) { showToast('⚠ Preencha nome e valor!'); return; }
+
+  const id = 'cat_' + Date.now().toString(36);
+  const item = { nome, valor };
+  try {
+    await supa.from('catalogo_itens').insert({ id, user_id: currentUser.id, dados: item });
+  } catch(e) { showToast('⚠ Erro ao salvar item.'); return; }
+
+  catalogoItens.push({ ...item, id });
+  document.getElementById('catNome').value = '';
+  document.getElementById('catValor').value = '';
+  renderCatalogoLista();
+  renderCatalogoRapido();
+  showToast('✓ Item adicionado ao catálogo!');
+}
+
+async function removerItemCatalogo(id) {
+  catalogoItens = catalogoItens.filter(i => i.id !== id);
+  try { await supa.from('catalogo_itens').delete().eq('id', id).eq('user_id', currentUser.id); } catch(e) { console.log(e); }
+  renderCatalogoLista();
+  renderCatalogoRapido();
+}
+
+function renderCatalogoLista() {
+  const cont = document.getElementById('catalogoLista');
+  if (!catalogoItens.length) {
+    cont.innerHTML = '<p style="font-size:13px;color:var(--ink-muted);text-align:center;padding:1rem">Nenhum item cadastrado ainda.</p>';
+    return;
+  }
+  cont.innerHTML = catalogoItens.map(i => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="font-size:13px;font-weight:600">${i.nome}</span> <span style="font-size:12px;color:var(--ink-muted)">— ${formatarMoeda(parseFloat(i.valor.toString().replace(',','.')) || 0)}</span></div>
+      <button onclick="removerItemCatalogo('${i.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px">✕</button>
+    </div>
+  `).join('');
+}
+
+function renderCatalogoRapido() {
+  const cont = document.getElementById('catalogoRapido');
+  if (!catalogoItens.length) { cont.innerHTML = ''; return; }
+  cont.innerHTML = '<div style="width:100%;font-size:11px;color:var(--ink-muted);margin-bottom:2px">Clique para adicionar do catálogo:</div>' +
+    catalogoItens.map(i => `<button type="button" onclick="adicionarDoCatalogoNoOrcamento('${i.id}')" style="padding:5px 12px;font-size:12px;border:1px solid var(--laranja-border);background:var(--laranja-soft);color:var(--laranja-dark);border-radius:20px;cursor:pointer;font-family:inherit;font-weight:600">+ ${i.nome}</button>`).join('');
+}
+
+function adicionarDoCatalogoNoOrcamento(catId) {
+  const item = catalogoItens.find(i => i.id === catId);
+  if (!item) return;
+  // Se só tem uma linha vazia, substitui; senão adiciona nova
+  if (itensOrcamentoAtual.length === 1 && !itensOrcamentoAtual[0].descricao && !itensOrcamentoAtual[0].valor) {
+    itensOrcamentoAtual[0] = { descricao: item.nome, valor: item.valor };
+  } else {
+    itensOrcamentoAtual.push({ descricao: item.nome, valor: item.valor });
+  }
+  renderItensOrcamento();
 }
 
 async function sair() {
