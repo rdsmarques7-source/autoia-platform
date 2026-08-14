@@ -274,6 +274,33 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   </div>
 </div>
 
+<!-- MODAL: ENVIAR MENSAGEM (Pós-venda) -->
+<div class="modal-overlay" id="modalMensagem">
+  <div class="modal-card">
+    <div class="modal-header"><h3 id="modalMsgTitulo">Enviar mensagem</h3><button class="modal-close" onclick="fecharModalMsg()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Assunto do e-mail</label><input type="text" id="msgAssunto" placeholder="Assunto..."></div>
+      <div class="form-group"><label>Mensagem</label><textarea id="msgTexto" style="min-height:150px" placeholder="Mensagem..."></textarea></div>
+      <div id="msgGerandoIA" style="display:none;text-align:center;padding:1rem;color:var(--laranja);font-size:14px;font-weight:600">🤖 Gerando mensagem com IA...</div>
+      <div class="form-group">
+        <label>Enviar e-mail usando</label>
+        <select id="emailProvider">
+          <option value="gmail">Gmail (navegador)</option>
+          <option value="outlook">Outlook (navegador)</option>
+          <option value="yahoo">Yahoo Mail (navegador)</option>
+          <option value="mailto">App de e-mail do dispositivo</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="gerarMsgIA()" id="btnGerarIA">🤖 Gerar com IA</button>
+      <button class="btn btn-outline" onclick="copiarMensagem()">📋 Copiar</button>
+      <button class="btn btn-wpp" onclick="enviarWhatsApp()" style="background:#25d366;color:white">📱 WhatsApp</button>
+      <button class="btn btn-primary" onclick="enviarEmailPV()" id="btnEnviarEmail">✉️ Enviar e-mail</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -465,10 +492,134 @@ function renderClientesPV() {
   }
   lista.innerHTML = '<div class="list-header"><h3>Todos os clientes (' + clientesPV.length + ')</h3></div>' +
     clientesPV.map(c => {
-      const pendentes = c.steps.filter(s => s.status === 'pendente' && s.data <= hoje).length;
-      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + c.nome + '</div><div class="item-sub">' + c.email + ' • Entregue em ' + fmt(c.dataEntrega) + '</div></div>' +
-        (pendentes > 0 ? '<span style="font-size:12px;font-weight:700;color:var(--laranja)">' + pendentes + ' pendente(s)</span>' : '<span style="font-size:12px;color:var(--green)">✓ em dia</span>') + '</div>';
+      const stepsHtml = c.steps.map((s, i) => {
+        let st = s.status;
+        if (st === 'pendente' && s.data < hoje) st = 'atrasado';
+        const cor = st === 'enviado' ? 'var(--green)' : st === 'atrasado' ? 'var(--red)' : '#854d0e';
+        const bg = st === 'enviado' ? 'var(--green-bg)' : st === 'atrasado' ? 'var(--red-bg)' : '#fef9c3';
+        return '<div style="background:' + bg + ';border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">' +
+          '<div><div style="font-size:11px;font-weight:700;color:' + cor + '">Dia ' + s.dia + ' — ' + s.tema + '</div><div style="font-size:10px;color:var(--ink-muted)">' + fmt(s.data) + '</div></div>' +
+          (st !== 'enviado' ? '<button onclick="abrirEnvio(\'' + c.id + '\',' + i + ')" style="padding:4px 10px;font-size:11px;border:1px solid var(--laranja);border-radius:6px;background:white;color:var(--laranja);cursor:pointer;font-family:inherit">Enviar</button>' : '<span style="font-size:11px;color:var(--green)">✓ Enviado</span>') +
+          '</div>';
+      }).join('');
+      return '<div class="list-item" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between;align-items:center;width:100%"><div class="item-info"><div class="item-titulo">' + c.nome + '</div><div class="item-sub">' + c.email + ' • Entregue em ' + fmt(c.dataEntrega) + '</div></div>' +
+        '<button class="btn btn-red" onclick="removerClientePV(\'' + c.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div>' +
+        stepsHtml + '</div>';
     }).join('');
+}
+
+async function removerClientePV(id) {
+  if (!confirm('Remover este cliente?')) return;
+  clientesPV = clientesPV.filter(c => c.id !== id);
+  try { await supa.from('flowia_clientes').delete().eq('id', id).eq('user_id', currentUser.id); } catch(e) { console.log(e); }
+  renderClientesPV();
+  showToast('Cliente removido.');
+}
+
+// ── ENVIO DE MENSAGEM ──
+let envioAtual = null;
+const GROQ_KEY = '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';
+
+function abrirEnvio(clienteId, stepIdx) {
+  const c = clientesPV.find(x => x.id === clienteId);
+  if (!c) return;
+  envioAtual = { cliente: c, stepIdx };
+  const step = c.steps[stepIdx];
+  document.getElementById('modalMsgTitulo').textContent = step.tema + ' — ' + c.nome;
+  document.getElementById('msgAssunto').value = '';
+  document.getElementById('msgTexto').value = '';
+  document.getElementById('modalMensagem').classList.add('show');
+}
+
+function fecharModalMsg() {
+  document.getElementById('modalMensagem').classList.remove('show');
+  envioAtual = null;
+}
+
+async function gerarMsgIA() {
+  if (!envioAtual) return;
+  const { cliente, stepIdx } = envioAtual;
+  document.getElementById('msgGerandoIA').style.display = 'block';
+  document.getElementById('btnGerarIA').disabled = true;
+
+  const prompts = {
+    0: `Crie uma mensagem de pós-venda para pedir feedback. Empresa: ${empresa.nome || 'nossa empresa'}. Cliente: ${cliente.nome}. Mensagem curta, pessoal e calorosa. Retorne só o texto da mensagem.`,
+    1: `Crie uma mensagem pedindo avaliação no Google. Empresa: ${empresa.nome || 'nossa empresa'}. Cliente: ${cliente.nome}. Mensagem curta e motivadora. Retorne só o texto.`,
+    2: `Crie uma mensagem de oferta especial para cliente fidelizado. Empresa: ${empresa.nome || 'nossa empresa'}. Cliente: ${cliente.nome}. Mensagem curta e tentadora. Retorne só o texto.`
+  };
+  const assuntos = {
+    0: `Como foi o seu serviço? — ${empresa.nome || 'Feedback'}`,
+    1: `Sua opinião vale muito para nós ⭐`,
+    2: `Uma oferta especial para você 🎁`
+  };
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompts[stepIdx] }], max_tokens: 400, temperature: 0.7 })
+    });
+    const data = await res.json();
+    const msg = data.choices?.[0]?.message?.content || '';
+    document.getElementById('msgTexto').value = msg;
+    document.getElementById('msgAssunto').value = assuntos[stepIdx];
+  } catch(e) { showToast('⚠ Erro ao gerar com IA.'); }
+
+  document.getElementById('msgGerandoIA').style.display = 'none';
+  document.getElementById('btnGerarIA').disabled = false;
+}
+
+function copiarMensagem() {
+  const assunto = document.getElementById('msgAssunto').value.trim();
+  const mensagem = document.getElementById('msgTexto').value.trim();
+  if (!assunto || !mensagem) { showToast('⚠ Preencha assunto e mensagem!'); return; }
+  navigator.clipboard.writeText('Assunto: ' + assunto + '\n\n' + mensagem).then(() => {
+    showToast('📋 Mensagem copiada!');
+  });
+}
+
+async function marcarComoEnviado() {
+  const { cliente, stepIdx } = envioAtual;
+  const cAtual = clientesPV.find(c => c.id === cliente.id);
+  cAtual.steps[stepIdx].status = 'enviado';
+  try { await supa.from('flowia_clientes').upsert({ id: cAtual.id, user_id: currentUser.id, dados: cAtual, atualizado_em: new Date().toISOString() }); } catch(e) { console.log(e); }
+  renderClientesPV();
+  fecharModalMsg();
+}
+
+async function enviarEmailPV() {
+  if (!envioAtual) return;
+  const assunto = document.getElementById('msgAssunto').value.trim();
+  const mensagem = document.getElementById('msgTexto').value.trim();
+  if (!assunto || !mensagem) { showToast('⚠ Preencha o assunto e a mensagem!'); return; }
+
+  const rodape = empresa.whatsapp ? '\n\nDúvidas? Entre em contato: ' + empresa.whatsapp : '\n\nObrigado pela preferência!';
+  const corpo = mensagem + rodape;
+  const provider = document.getElementById('emailProvider').value;
+  const destinatario = envioAtual.cliente.email;
+
+  let url;
+  if (provider === 'gmail') url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(destinatario) + '&su=' + encodeURIComponent(assunto) + '&body=' + encodeURIComponent(corpo);
+  else if (provider === 'outlook') url = 'https://outlook.live.com/mail/0/deeplink/compose?to=' + encodeURIComponent(destinatario) + '&subject=' + encodeURIComponent(assunto) + '&body=' + encodeURIComponent(corpo);
+  else if (provider === 'yahoo') url = 'https://compose.mail.yahoo.com/?to=' + encodeURIComponent(destinatario) + '&subject=' + encodeURIComponent(assunto) + '&body=' + encodeURIComponent(corpo);
+  else url = 'mailto:' + encodeURIComponent(destinatario) + '?subject=' + encodeURIComponent(assunto) + '&body=' + encodeURIComponent(corpo);
+
+  const link = document.createElement('a');
+  link.href = url; link.target = '_blank'; link.rel = 'noopener';
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+
+  await marcarComoEnviado();
+  showToast('✉️ Abrindo e-mail...');
+}
+
+function enviarWhatsApp() {
+  if (!envioAtual) return;
+  const mensagem = document.getElementById('msgTexto').value.trim();
+  if (!mensagem) { showToast('⚠ Escreva ou gere uma mensagem primeiro!'); return; }
+  const url = 'https://wa.me/?text=' + encodeURIComponent(mensagem);
+  window.open(url, '_blank');
+  marcarComoEnviado();
+  showToast('📱 Abrindo WhatsApp...');
 }
 
 // ── FINANCEIRO ──
