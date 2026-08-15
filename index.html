@@ -190,10 +190,11 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 <!-- MÓDULO: ORÇAMENTOS -->
 <div class="view" id="viewOrcamentos">
   <div class="page">
-    <div class="stats-grid">
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="stat-card" onclick="filtrarOrcamentos('todos')" style="cursor:pointer"><div class="stat-val" id="orcStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Total enviados</div></div>
       <div class="stat-card" onclick="filtrarOrcamentos('aprovado')" style="cursor:pointer"><div class="stat-val" id="orcStatAprovados" style="color:var(--green)">0</div><div class="stat-label">Aprovados</div></div>
       <div class="stat-card" onclick="filtrarOrcamentos('pendente')" style="cursor:pointer"><div class="stat-val" id="orcStatPendentes" style="color:#854d0e">0</div><div class="stat-label">Aguardando</div></div>
+      <div class="stat-card" onclick="filtrarOrcamentos('recusado')" style="cursor:pointer"><div class="stat-val" id="orcStatRecusados" style="color:var(--red)">0</div><div class="stat-label">Recusados</div></div>
     </div>
     <div id="orcFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
     <div style="position:relative;margin-bottom:1rem">
@@ -651,7 +652,7 @@ let filtroOrcAtivo = 'todos';
 
 function filtrarOrcamentos(tipo) {
   filtroOrcAtivo = tipo;
-  const labels = { todos: null, aprovado: '✓ Mostrando: orçamentos aprovados', pendente: '⏳ Mostrando: orçamentos aguardando resposta' };
+  const labels = { todos: null, aprovado: '✓ Mostrando: orçamentos aprovados', pendente: '⏳ Mostrando: orçamentos aguardando resposta', recusado: '✕ Mostrando: orçamentos recusados' };
   const filtroEl = document.getElementById('orcFiltroAtivo');
   if (labels[tipo]) {
     filtroEl.style.display = 'block';
@@ -666,6 +667,7 @@ function renderOrcamentos() {
   document.getElementById('orcStatTotal').textContent = orcamentosList.length;
   document.getElementById('orcStatAprovados').textContent = orcamentosList.filter(o => o.status === 'aprovado').length;
   document.getElementById('orcStatPendentes').textContent = orcamentosList.filter(o => o.status === 'pendente').length;
+  document.getElementById('orcStatRecusados').textContent = orcamentosList.filter(o => o.status === 'recusado').length;
 
   const busca = (document.getElementById('orcBusca')?.value || '').trim().toLowerCase();
   let listaFiltrada = orcamentosList;
