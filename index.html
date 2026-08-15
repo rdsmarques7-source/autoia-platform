@@ -102,7 +102,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 .modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .modal-header h3 { font-size: 16px; font-weight: 700; }
 .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--ink-muted); }
-.modal-body { padding: 1.5rem; }
+.modal-card { display: flex; flex-direction: column; max-height: 90vh; }
+.modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
 .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
 .toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--laranja); color: white; padding: 11px 20px; border-radius: var(--radius); font-size: 13.5px; font-weight: 600; opacity: 0; transform: translateY(8px); transition: all 0.25s; z-index: 999; pointer-events: none; max-width: 300px; }
