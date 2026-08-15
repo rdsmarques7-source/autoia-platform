@@ -391,6 +391,11 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   <div class="modal-card">
     <div class="modal-header"><h3>➕ Nova movimentação</h3><button class="modal-close" onclick="fecharModalTransacao()">×</button></div>
     <div class="modal-body">
+      <div class="form-group"><label>Cliente (opcional)</label>
+        <select id="tCliente" onchange="autoPreencherClienteFinanceiro()">
+          <option value="">— Selecionar da lista de Clientes —</option>
+        </select>
+      </div>
       <div class="form-group"><label>Tipo</label>
         <select id="tTipo"><option value="entrada">Entrada (recebi)</option><option value="saida">Saída (paguei)</option></select>
       </div>
@@ -1958,10 +1963,33 @@ function abrirModalTransacao() {
   document.getElementById('tData').value = new Date().toISOString().split('T')[0];
   document.getElementById('tForma').value = 'pix';
   document.getElementById('tLinhaDigitavelGrupo').style.display = 'none';
+  popularSeletorClienteFinanceiro();
   document.getElementById('modalTransacao').classList.add('show');
+}
+
+function popularSeletorClienteFinanceiro() {
+  const todos = computarClientesUnificados();
+  // Fechados primeiro, depois os demais
+  todos.sort((a, b) => (a.status === 'fechado' ? -1 : 1) - (b.status === 'fechado' ? -1 : 1));
+  const select = document.getElementById('tCliente');
+  select.innerHTML = '<option value="">— Selecionar da lista de Clientes —</option>' +
+    todos.map((c, i) => `<option value="${i}">${c.status === 'fechado' ? '✓' : '·'} ${c.nome} (${c.origem})</option>`).join('');
+  select.dataset.clientes = JSON.stringify(todos);
+}
+
+function autoPreencherClienteFinanceiro() {
+  const select = document.getElementById('tCliente');
+  if (!select.value) return;
+  const todos = JSON.parse(select.dataset.clientes || '[]');
+  const c = todos[parseInt(select.value)];
+  if (!c) return;
+  document.getElementById('tDescricao').value = 'Pagamento — ' + c.nome;
+  if (c.valor) document.getElementById('tValor').value = c.valor.toString().replace('.', ',');
+  document.getElementById('tTipo').value = 'entrada';
 }
 function fecharModalTransacao() {
   document.getElementById('modalTransacao').classList.remove('show');
+  document.getElementById('tCliente').value = '';
   ['tDescricao','tValor','tLinhaDigitavel'].forEach(id => document.getElementById(id).value = '');
 }
 
