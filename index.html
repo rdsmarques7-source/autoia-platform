@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AutoIA — Plataforma para o seu negócio</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -299,7 +300,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
         <div class="form-group"><label>Nome do item</label><input type="text" id="catNome" placeholder="Ex: Pintura por m²"></div>
         <div class="form-group"><label>Valor</label><input type="text" id="catValor" placeholder="Ex: 35,00"></div>
       </div>
-      <button class="btn btn-primary btn-full" onclick="adicionarItemCatalogo()" style="margin-bottom:16px">➕ Adicionar ao catálogo</button>
+      <button class="btn btn-primary btn-full" onclick="adicionarItemCatalogo()" id="btnSalvarCatalogo" style="margin-bottom:16px">➕ Adicionar ao catálogo</button>
       <div id="catalogoLista"></div>
     </div>
     <div class="modal-footer">
@@ -333,6 +334,19 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
       </div>
 
       <div class="form-group" style="margin-top:12px"><label>Válido até</label><input type="date" id="oValidade"></div>
+
+      <label style="display:block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px;">Formas de pagamento aceitas</label>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pagPix" checked> Pix</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pagCredito" checked> Cartão de crédito</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pagBoleto"> Boleto</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="pagDinheiro" checked> Dinheiro</label>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="pagParcelamento" onchange="document.getElementById('parcelamentoCampos').style.display=this.checked?'grid':'none'"> Permitir entrada + parcelas</label>
+      <div id="parcelamentoCampos" class="form-row" style="display:none">
+        <div class="form-group"><label>Valor de entrada</label><input type="text" id="pagEntrada" placeholder="Ex: 200,00"></div>
+        <div class="form-group"><label>Número de parcelas</label><input type="number" id="pagNumParcelas" placeholder="Ex: 3" min="2" max="24"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="fecharModalOrcamento()">Cancelar</button>
@@ -445,15 +459,51 @@ async function syncOrcamentos() {
   } catch(e) { console.log('Sync orçamentos error:', e); }
 }
 
-function abrirModalOrcamento() {
-  itensOrcamentoAtual = [{ descricao: '', valor: '' }];
+let orcamentoEditandoId = null;
+
+function abrirModalOrcamento(idParaEditar) {
+  orcamentoEditandoId = idParaEditar || null;
+
+  if (idParaEditar) {
+    const o = orcamentosList.find(x => x.id === idParaEditar);
+    if (!o) return;
+    document.getElementById('oNome').value = o.nome;
+    document.getElementById('oWhatsapp').value = o.whatsapp || '';
+    document.getElementById('oServico').value = o.servico;
+    document.getElementById('oValidade').value = o.validade || '';
+    itensOrcamentoAtual = o.itens.map(it => ({ ...it }));
+    const pag = o.pagamento || {};
+    document.getElementById('pagPix').checked = pag.pix !== false;
+    document.getElementById('pagCredito').checked = pag.credito !== false;
+    document.getElementById('pagBoleto').checked = !!pag.boleto;
+    document.getElementById('pagDinheiro').checked = pag.dinheiro !== false;
+    document.getElementById('pagParcelamento').checked = !!pag.parcelamento;
+    document.getElementById('parcelamentoCampos').style.display = pag.parcelamento ? 'grid' : 'none';
+    document.getElementById('pagEntrada').value = pag.entrada || '';
+    document.getElementById('pagNumParcelas').value = pag.numParcelas || '';
+    document.querySelector('#modalOrcamento .modal-header h3').textContent = '✏️ Editar orçamento';
+    document.querySelector('#modalOrcamento .btn-primary').textContent = '✓ Salvar alterações';
+  } else {
+    itensOrcamentoAtual = [{ descricao: '', valor: '' }];
+    document.getElementById('oValidade').value = new Date(Date.now() + 7*86400000).toISOString().split('T')[0];
+    document.getElementById('pagPix').checked = true;
+    document.getElementById('pagCredito').checked = true;
+    document.getElementById('pagBoleto').checked = false;
+    document.getElementById('pagDinheiro').checked = true;
+    document.getElementById('pagParcelamento').checked = false;
+    document.getElementById('parcelamentoCampos').style.display = 'none';
+    document.getElementById('pagEntrada').value = '';
+    document.getElementById('pagNumParcelas').value = '';
+    document.querySelector('#modalOrcamento .modal-header h3').textContent = '➕ Novo orçamento';
+    document.querySelector('#modalOrcamento .btn-primary').textContent = '✓ Criar e gerar link';
+  }
   renderItensOrcamento();
   renderCatalogoRapido();
-  document.getElementById('oValidade').value = new Date(Date.now() + 7*86400000).toISOString().split('T')[0];
   document.getElementById('modalOrcamento').classList.add('show');
 }
 function fecharModalOrcamento() {
   document.getElementById('modalOrcamento').classList.remove('show');
+  orcamentoEditandoId = null;
   ['oNome','oWhatsapp','oServico'].forEach(id => document.getElementById(id).value = '');
 }
 
@@ -523,10 +573,36 @@ async function salvarOrcamento() {
 
   if (!nome || !servico || !itensValidos.length) { showToast('⚠ Preencha nome, serviço e pelo menos 1 item!'); return; }
 
+  const pagamento = {
+    pix: document.getElementById('pagPix').checked,
+    credito: document.getElementById('pagCredito').checked,
+    boleto: document.getElementById('pagBoleto').checked,
+    dinheiro: document.getElementById('pagDinheiro').checked,
+    parcelamento: document.getElementById('pagParcelamento').checked,
+    entrada: document.getElementById('pagEntrada').value.trim(),
+    numParcelas: document.getElementById('pagNumParcelas').value.trim()
+  };
+
   const total = itensValidos.reduce((s, it) => s + (parseFloat(it.valor.toString().replace(',', '.')) || 0), 0);
+
+  if (orcamentoEditandoId) {
+    const id = orcamentoEditandoId;
+    const existente = orcamentosList.find(o => o.id === id);
+    const dados = { ...existente, nome, whatsapp, servico, itens: itensValidos, total, validade, pagamento };
+    try { await supa.from('orcamentos').update({ dados }).eq('id', id).eq('user_id', currentUser.id); }
+    catch(e) { showToast('⚠ Erro ao salvar alterações.'); return; }
+    const idx = orcamentosList.findIndex(o => o.id === id);
+    if (idx > -1) orcamentosList[idx] = { ...dados, id, status: existente.status };
+    orcamentoEditandoId = null;
+    fecharModalOrcamento();
+    renderOrcamentos();
+    showToast('✓ Orçamento atualizado!');
+    return;
+  }
+
   const id = gerarIdPublico();
   const dados = {
-    nome, whatsapp, servico, itens: itensValidos, total, validade,
+    nome, whatsapp, servico, itens: itensValidos, total, validade, pagamento,
     empresaNome: empresa.nome || '', empresaWhatsapp: empresa.whatsapp || '',
     criadoEm: new Date().toISOString()
   };
@@ -580,14 +656,86 @@ function renderOrcamentos() {
       const [cor, bg, texto] = badges[o.status] || badges.pendente;
       const link = window.location.origin + window.location.pathname + '?orc=' + o.id;
       return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + o.nome + '</div><div class="item-sub">' + o.servico.slice(0,60) + (o.servico.length > 60 ? '...' : '') + '</div></div>' +
-        '<div style="display:flex;align-items:center;gap:10px"><span class="item-valor">' + formatarMoeda(o.total) + '</span>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-valor">' + formatarMoeda(o.total) + '</span>' +
         '<span style="font-size:11px;font-weight:700;color:' + cor + ';background:' + bg + ';padding:4px 10px;border-radius:20px;white-space:nowrap">' + texto + '</span>' +
+        '<button class="btn btn-outline" onclick="abrirModalOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">✏️</button>' +
+        '<button class="btn btn-outline" onclick="baixarPdfOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">📄 PDF</button>' +
         '<button class="btn btn-outline" onclick="navigator.clipboard.writeText(\'' + link + '\');showToast(\'📋 Link copiado!\')" style="padding:4px 8px;font-size:11px">🔗</button>' +
         '<button class="btn btn-red" onclick="removerOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>';
     }).join('');
 }
 
+function gerarTextoFormasPagamento(pag) {
+  if (!pag) return 'A combinar';
+  const formas = [];
+  if (pag.pix) formas.push('Pix');
+  if (pag.credito) formas.push('Cartão de crédito');
+  if (pag.boleto) formas.push('Boleto');
+  if (pag.dinheiro) formas.push('Dinheiro');
+  let texto = formas.join(', ') || 'A combinar';
+  if (pag.parcelamento && pag.entrada && pag.numParcelas) {
+    texto += ` (entrada de ${formatarMoeda(parseFloat(pag.entrada.toString().replace(',','.')) || 0)} + ${pag.numParcelas}x)`;
+  }
+  return texto;
+}
+
+function baixarPdfOrcamento(id) {
+  const o = orcamentosList.find(x => x.id === id);
+  if (!o) return;
+  gerarPdf(o);
+}
+
+function gerarPdf(o) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+
+  doc.setFontSize(18); doc.setFont(undefined, 'bold');
+  doc.text(o.empresaNome || 'Orçamento', 20, y); y += 10;
+  doc.setFontSize(10); doc.setFont(undefined, 'normal');
+  doc.setTextColor(120);
+  doc.text('Orçamento gerado em ' + new Date(o.criadoEm || Date.now()).toLocaleDateString('pt-BR'), 20, y); y += 12;
+
+  doc.setTextColor(0);
+  doc.setFontSize(11); doc.setFont(undefined, 'bold');
+  doc.text('Cliente: ', 20, y);
+  doc.setFont(undefined, 'normal');
+  doc.text(o.nome, 45, y); y += 8;
+
+  doc.setFont(undefined, 'bold'); doc.text('Serviço:', 20, y); y += 6;
+  doc.setFont(undefined, 'normal');
+  const servicoLines = doc.splitTextToSize(o.servico, 170);
+  doc.text(servicoLines, 20, y); y += servicoLines.length * 6 + 6;
+
+  doc.setFont(undefined, 'bold'); doc.text('Itens', 20, y); y += 3;
+  doc.setDrawColor(230); doc.line(20, y, 190, y); y += 7;
+  doc.setFont(undefined, 'normal');
+  o.itens.forEach(it => {
+    doc.text(it.descricao, 20, y);
+    doc.text(formatarMoeda(parseFloat(it.valor.toString().replace(',','.')) || 0), 190, y, { align: 'right' });
+    y += 7;
+  });
+  doc.line(20, y, 190, y); y += 8;
+
+  doc.setFontSize(13); doc.setFont(undefined, 'bold');
+  doc.text('Total', 20, y);
+  doc.text(formatarMoeda(o.total), 190, y, { align: 'right' }); y += 12;
+
+  doc.setFontSize(10); doc.setFont(undefined, 'bold');
+  doc.text('Formas de pagamento:', 20, y); y += 6;
+  doc.setFont(undefined, 'normal');
+  const pagLines = doc.splitTextToSize(gerarTextoFormasPagamento(o.pagamento), 170);
+  doc.text(pagLines, 20, y); y += pagLines.length * 6 + 4;
+
+  if (o.validade) { doc.setTextColor(120); doc.text('Válido até ' + fmt(o.validade), 20, y); y += 6; }
+  if (o.empresaWhatsapp) { doc.setTextColor(120); doc.text('Contato: ' + o.empresaWhatsapp, 20, y); }
+
+  doc.save('orcamento_' + o.nome.replace(/\s+/g, '_') + '.pdf');
+}
+
 // ── TELA PÚBLICA DE APROVAÇÃO (cliente final, sem login) ──
+let orcamentoPublicoAtual = null;
+
 async function mostrarTelaPublicaOrcamento(orcId) {
   document.getElementById('loginScreen').style.display = 'none';
   document.body.innerHTML = '<div id="orcPublico" style="max-width:560px;margin:0 auto;padding:2rem"><div style="text-align:center;padding:3rem;color:#a1a1aa">Carregando orçamento...</div></div>';
@@ -601,6 +749,7 @@ async function mostrarTelaPublicaOrcamento(orcId) {
 
   const o = data.dados;
   const status = data.status;
+  orcamentoPublicoAtual = o;
 
   const itensHtml = o.itens.map(it => `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e4e4e7"><span style="font-size:14px">${it.descricao}</span><span style="font-size:14px;font-weight:700">${formatarMoeda(parseFloat(it.valor))}</span></div>`).join('');
 
@@ -636,7 +785,12 @@ async function mostrarTelaPublicaOrcamento(orcId) {
         <span style="font-size:16px;font-weight:800">Total</span>
         <span style="font-size:22px;font-weight:800;color:#f97316">${formatarMoeda(o.total)}</span>
       </div>
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #e4e4e7">
+        <div style="font-size:12px;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Formas de pagamento</div>
+        <div style="font-size:13px;font-weight:600">${gerarTextoFormasPagamento(o.pagamento)}</div>
+      </div>
       ${o.validade ? '<div style="font-size:12px;color:#a1a1aa;margin-top:8px">Válido até ' + fmt(o.validade) + '</div>' : ''}
+      <button onclick='gerarPdf(orcamentoPublicoAtual)' style="width:100%;margin-top:14px;padding:10px;border:1.5px solid #e4e4e7;background:white;border-radius:10px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px">📄 Baixar em PDF</button>
       ${acoesHtml}
     </div>
   `;
@@ -679,18 +833,29 @@ async function adicionarItemCatalogo() {
   const valor = document.getElementById('catValor').value.trim();
   if (!nome || !valor) { showToast('⚠ Preencha nome e valor!'); return; }
 
-  const id = 'cat_' + Date.now().toString(36);
-  const item = { nome, valor };
-  try {
-    await supa.from('catalogo_itens').insert({ id, user_id: currentUser.id, dados: item });
-  } catch(e) { showToast('⚠ Erro ao salvar item.'); return; }
+  if (catalogoEditandoId) {
+    const id = catalogoEditandoId;
+    const item = { nome, valor };
+    try { await supa.from('catalogo_itens').update({ dados: item }).eq('id', id).eq('user_id', currentUser.id); }
+    catch(e) { showToast('⚠ Erro ao salvar alteração.'); return; }
+    const idx = catalogoItens.findIndex(i => i.id === id);
+    if (idx > -1) catalogoItens[idx] = { ...item, id };
+    catalogoEditandoId = null;
+    document.getElementById('btnSalvarCatalogo').textContent = '➕ Adicionar ao catálogo';
+    showToast('✓ Item atualizado!');
+  } else {
+    const id = 'cat_' + Date.now().toString(36);
+    const item = { nome, valor };
+    try { await supa.from('catalogo_itens').insert({ id, user_id: currentUser.id, dados: item }); }
+    catch(e) { showToast('⚠ Erro ao salvar item.'); return; }
+    catalogoItens.push({ ...item, id });
+    showToast('✓ Item adicionado ao catálogo!');
+  }
 
-  catalogoItens.push({ ...item, id });
   document.getElementById('catNome').value = '';
   document.getElementById('catValor').value = '';
   renderCatalogoLista();
   renderCatalogoRapido();
-  showToast('✓ Item adicionado ao catálogo!');
 }
 
 async function removerItemCatalogo(id) {
@@ -709,9 +874,23 @@ function renderCatalogoLista() {
   cont.innerHTML = catalogoItens.map(i => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div><span style="font-size:13px;font-weight:600">${i.nome}</span> <span style="font-size:12px;color:var(--ink-muted)">— ${formatarMoeda(parseFloat(i.valor.toString().replace(',','.')) || 0)}</span></div>
-      <button onclick="removerItemCatalogo('${i.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px">✕</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="editarItemCatalogo('${i.id}')" style="background:none;border:none;color:var(--laranja);cursor:pointer;font-size:13px;font-weight:600">Editar</button>
+        <button onclick="removerItemCatalogo('${i.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px">✕</button>
+      </div>
     </div>
   `).join('');
+}
+
+let catalogoEditandoId = null;
+
+function editarItemCatalogo(id) {
+  const item = catalogoItens.find(i => i.id === id);
+  if (!item) return;
+  catalogoEditandoId = id;
+  document.getElementById('catNome').value = item.nome;
+  document.getElementById('catValor').value = item.valor;
+  document.getElementById('btnSalvarCatalogo').textContent = '✓ Salvar alteração';
 }
 
 function renderCatalogoRapido() {
