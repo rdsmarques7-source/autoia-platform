@@ -214,10 +214,36 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
   </div>
 </div>
 
-<!-- MÓDULO: ATENDIMENTO (em construção) -->
+<!-- MÓDULO: ATENDIMENTO -->
 <div class="view" id="viewAtendimento">
   <div class="page">
-    <div class="construcao"><div>🤖</div><h2 style="font-size:18px;font-weight:800;margin-bottom:8px">Módulo de Atendimento</h2><p>Em construção — chegando em breve.</p></div>
+    <div class="card" style="background:var(--laranja-pale);border-color:var(--laranja-border)">
+      <div class="card-title"><div class="card-icon">🔗</div> Link do seu assistente</div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:10px">Compartilhe esse link com seus clientes — eles conversam com uma IA treinada nas informações do seu negócio, mesmo quando você estiver offline.</p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="atLinkAssistente" readonly style="flex:1;padding:9px 12px;border:1.5px solid var(--laranja-border);border-radius:8px;font-size:12px;background:white">
+        <button class="btn btn-primary" onclick="copiarLinkAtendimento()">📋 Copiar</button>
+        <button class="btn btn-primary" onclick="enviarLinkAtendimentoWhatsApp()" style="background:#25d366">📱</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="stat-card"><div class="stat-val" id="atStatConversas" style="color:var(--laranja)">0</div><div class="stat-label">Conversas recebidas</div></div>
+      <div class="stat-card"><div class="stat-val" id="atStatLeads" style="color:var(--green)">0</div><div class="stat-label">Contatos capturados</div></div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h2 style="font-size:18px;font-weight:800">Perguntas frequentes</h2>
+      <button class="btn btn-primary" onclick="abrirModalFaq()">➕ Nova pergunta</button>
+    </div>
+    <div class="item-list" id="atFaqList" style="margin-bottom:1.5rem">
+      <div class="empty-state"><div>❓</div><p>Nenhuma pergunta cadastrada ainda. Adicione as dúvidas mais comuns dos seus clientes.</p></div>
+    </div>
+
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:1rem">Conversas recentes</h2>
+    <div class="item-list" id="atConversasList">
+      <div class="empty-state"><div>💬</div><p>Nenhuma conversa ainda.</p></div>
+    </div>
   </div>
 </div>
 
@@ -248,6 +274,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
         <div class="form-group"><label>Nome da empresa</label><input type="text" id="cfgEmpresa" placeholder="Ex: Mariana Reformas"></div>
         <div class="form-group"><label>WhatsApp</label><input type="text" id="cfgWhatsapp" placeholder="(11) 99999-9999"></div>
       </div>
+      <div class="form-group"><label>Sobre o negócio (usado pelo assistente de Atendimento)</label><textarea id="cfgSobreNegocio" placeholder="Ex: Fazemos reformas residenciais em geral, com 10 anos de experiência. Atendemos em toda a região de Campinas." style="min-height:70px"></textarea></div>
     </div>
     <div class="card">
       <div class="card-title"><div class="card-icon">🔑</div> Sua senha de acesso</div>
@@ -313,6 +340,29 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
     <div class="modal-footer">
       <button class="btn btn-outline btn-full" onclick="document.getElementById('modalCatalogo').classList.remove('show')">Fechar</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: NOVA PERGUNTA FREQUENTE -->
+<div class="modal-overlay" id="modalFaq">
+  <div class="modal-card">
+    <div class="modal-header"><h3>➕ Pergunta frequente</h3><button class="modal-close" onclick="fecharModalFaq()">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Pergunta <span class="req">*</span></label><input type="text" id="faqPergunta" placeholder="Ex: Qual o horário de atendimento?"></div>
+      <div class="form-group"><label>Resposta <span class="req">*</span></label><textarea id="faqResposta" placeholder="Ex: Atendemos de segunda a sexta, das 8h às 18h." style="min-height:80px"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModalFaq()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarFaq()" id="btnSalvarFaq">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VER CONVERSA -->
+<div class="modal-overlay" id="modalVerConversa">
+  <div class="modal-card" style="max-width:500px">
+    <div class="modal-header"><h3>💬 Conversa</h3><button class="modal-close" onclick="document.getElementById('modalVerConversa').classList.remove('show')">×</button></div>
+    <div class="modal-body" id="conteudoConversa"></div>
   </div>
 </div>
 
@@ -447,11 +497,14 @@ async function entrar() {
 
 async function iniciarSessao() {
   document.getElementById('loginScreen').style.display = 'none';
-  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos(), syncCatalogo()]);
+  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos(), syncCatalogo(), syncAtendimento()]);
   carregarConfig();
   renderClientesPV();
   renderFinanceiro();
   renderOrcamentos();
+  renderFaq();
+  renderConversas();
+  renderLinkAtendimento();
 }
 
 // ── ORÇAMENTOS ──
@@ -943,6 +996,234 @@ function adicionarDoCatalogoNoOrcamento(catId) {
   renderItensOrcamento();
 }
 
+// ── ATENDIMENTO ──
+let faqList = [];
+let conversasList = [];
+
+async function syncAtendimento() {
+  if (!currentUser) return;
+  try {
+    const { data: cfg } = await supa.from('atendimento_config').select('dados').eq('user_id', currentUser.id).single();
+    faqList = (cfg && cfg.dados && cfg.dados.faq) ? cfg.dados.faq : [];
+  } catch(e) { console.log('Sync atendimento config error:', e); }
+  try {
+    const { data: convs } = await supa.from('atendimento_conversas').select('*').eq('user_id', currentUser.id).order('criado_em', { ascending: false });
+    if (convs) conversasList = convs.map(r => ({ ...r.dados, id: r.id }));
+  } catch(e) { console.log('Sync conversas error:', e); }
+}
+
+async function salvarFaqNoBanco() {
+  try {
+    await supa.from('atendimento_config').upsert({ user_id: currentUser.id, dados: { faq: faqList }, atualizado_em: new Date().toISOString() });
+  } catch(e) { console.log('Save FAQ error:', e); }
+}
+
+let faqEditandoIdx = null;
+
+function abrirModalFaq(idx) {
+  faqEditandoIdx = (idx !== undefined) ? idx : null;
+  if (faqEditandoIdx !== null) {
+    document.getElementById('faqPergunta').value = faqList[idx].pergunta;
+    document.getElementById('faqResposta').value = faqList[idx].resposta;
+    document.getElementById('btnSalvarFaq').textContent = '✓ Salvar alteração';
+  } else {
+    document.getElementById('faqPergunta').value = '';
+    document.getElementById('faqResposta').value = '';
+    document.getElementById('btnSalvarFaq').textContent = '✓ Salvar';
+  }
+  document.getElementById('modalFaq').classList.add('show');
+}
+function fecharModalFaq() {
+  document.getElementById('modalFaq').classList.remove('show');
+  faqEditandoIdx = null;
+}
+
+async function salvarFaq() {
+  const pergunta = document.getElementById('faqPergunta').value.trim();
+  const resposta = document.getElementById('faqResposta').value.trim();
+  if (!pergunta || !resposta) { showToast('⚠ Preencha a pergunta e a resposta!'); return; }
+
+  if (faqEditandoIdx !== null) faqList[faqEditandoIdx] = { pergunta, resposta };
+  else faqList.push({ pergunta, resposta });
+
+  await salvarFaqNoBanco();
+  fecharModalFaq();
+  renderFaq();
+  showToast('✓ Pergunta salva!');
+}
+
+async function removerFaq(idx) {
+  if (!confirm('Remover esta pergunta?')) return;
+  faqList.splice(idx, 1);
+  await salvarFaqNoBanco();
+  renderFaq();
+  showToast('Removida.');
+}
+
+function renderFaq() {
+  const lista = document.getElementById('atFaqList');
+  if (!faqList.length) {
+    lista.innerHTML = '<div class="empty-state"><div>❓</div><p>Nenhuma pergunta cadastrada ainda. Adicione as dúvidas mais comuns dos seus clientes.</p></div>';
+    return;
+  }
+  lista.innerHTML = '<div class="list-header"><h3>' + faqList.length + ' pergunta(s)</h3></div>' +
+    faqList.map((f, i) => `
+      <div class="list-item"><div class="item-info"><div class="item-titulo">${f.pergunta}</div><div class="item-sub">${f.resposta.slice(0,80)}${f.resposta.length > 80 ? '...' : ''}</div></div>
+      <div style="display:flex;gap:6px"><button class="btn btn-outline" onclick="abrirModalFaq(${i})" style="padding:4px 8px;font-size:11px">✏️</button>
+      <button class="btn btn-red" onclick="removerFaq(${i})" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>
+    `).join('');
+}
+
+function renderLinkAtendimento() {
+  const link = window.location.origin + window.location.pathname + '?atend=' + currentUser.id;
+  document.getElementById('atLinkAssistente').value = link;
+}
+function copiarLinkAtendimento() {
+  navigator.clipboard.writeText(document.getElementById('atLinkAssistente').value).then(() => showToast('📋 Link copiado!'));
+}
+function enviarLinkAtendimentoWhatsApp() {
+  const link = document.getElementById('atLinkAssistente').value;
+  const msg = `Olá! Se tiver alguma dúvida, pode conversar com nosso assistente aqui: ${link}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+function renderConversas() {
+  document.getElementById('atStatConversas').textContent = conversasList.length;
+  document.getElementById('atStatLeads').textContent = conversasList.filter(c => c.visitanteWhatsapp || c.visitanteNome).length;
+
+  const lista = document.getElementById('atConversasList');
+  if (!conversasList.length) {
+    lista.innerHTML = '<div class="empty-state"><div>💬</div><p>Nenhuma conversa ainda.</p></div>';
+    return;
+  }
+  lista.innerHTML = '<div class="list-header"><h3>' + conversasList.length + ' conversa(s)</h3></div>' +
+    conversasList.map(c => {
+      const nome = c.visitanteNome || 'Visitante';
+      const ultimaMsg = c.mensagens && c.mensagens.length ? c.mensagens[c.mensagens.length - 1].texto : '';
+      return '<div class="list-item" style="cursor:pointer" onclick="verConversa(\'' + c.id + '\')"><div class="item-info"><div class="item-titulo">' + nome + (c.visitanteWhatsapp ? ' • ' + c.visitanteWhatsapp : '') + '</div><div class="item-sub">' + ultimaMsg.slice(0,70) + '</div></div>' +
+        '<span style="font-size:11px;color:var(--ink-muted)">' + new Date(c.criadoEm).toLocaleDateString('pt-BR') + '</span></div>';
+    }).join('');
+}
+
+function verConversa(id) {
+  const c = conversasList.find(x => x.id === id);
+  if (!c) return;
+  const cont = document.getElementById('conteudoConversa');
+  cont.innerHTML = (c.mensagens || []).map(m => `
+    <div style="display:flex;justify-content:${m.de === 'visitante' ? 'flex-start' : 'flex-end'};margin-bottom:8px">
+      <div style="max-width:75%;padding:8px 12px;border-radius:12px;font-size:13px;background:${m.de === 'visitante' ? 'var(--surface)' : 'var(--laranja-soft)'}">${m.texto}</div>
+    </div>
+  `).join('');
+  document.getElementById('modalVerConversa').classList.add('show');
+}
+
+// ── TELA PÚBLICA DE CHAT (visitante, sem login) ──
+let chatVisitanteId = null;
+let chatMensagens = [];
+let chatDonoId = null;
+let chatEmpresaConfig = {};
+let chatFaq = [];
+
+async function mostrarTelaPublicaAtendimento(donoId) {
+  const loginScreenEl = document.getElementById('loginScreen');
+  if (loginScreenEl) loginScreenEl.style.display = 'none';
+  chatDonoId = donoId;
+
+  const { data: cfgEmpresa } = await supa.from('configuracoes').select('dados').eq('user_id', donoId).eq('sistema', 'autoia').single();
+  const { data: cfgAtend } = await supa.from('atendimento_config').select('dados').eq('user_id', donoId).single();
+  chatEmpresaConfig = (cfgEmpresa && cfgEmpresa.dados) ? cfgEmpresa.dados : {};
+  chatFaq = (cfgAtend && cfgAtend.dados && cfgAtend.dados.faq) ? cfgAtend.dados.faq : [];
+
+  chatVisitanteId = 'conv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  chatMensagens = [];
+
+  const nomeEmpresa = chatEmpresaConfig.nome || 'Atendimento';
+  document.body.innerHTML = `
+    <div style="max-width:480px;margin:0 auto;height:100vh;display:flex;flex-direction:column;background:white">
+      <div style="background:#0f0f10;color:white;padding:1rem 1.25rem;display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;background:#f97316;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800">🤖</div>
+        <div><div style="font-weight:700;font-size:15px">${nomeEmpresa}</div><div style="font-size:11px;color:rgba(255,255,255,0.5)">Assistente virtual</div></div>
+      </div>
+      <div id="chatMensagensCont" style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:10px;background:#f8f8f8"></div>
+      <div style="padding:0.75rem;border-top:1px solid #e4e4e7;display:flex;gap:8px">
+        <input type="text" id="chatInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter') enviarMensagemChat()" style="flex:1;padding:11px 14px;border:1.5px solid #e4e4e7;border-radius:20px;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none">
+        <button onclick="enviarMensagemChat()" style="width:42px;height:42px;border-radius:50%;background:#f97316;color:white;border:none;cursor:pointer;font-size:16px">➤</button>
+      </div>
+    </div>
+  `;
+
+  adicionarMensagemChat('assistente', `Olá! 👋 Sou o assistente virtual d${nomeEmpresa.match(/^[AEIOUaeiou]/) ? 'e' : 'a'} ${nomeEmpresa}. Como posso te ajudar hoje?`);
+}
+
+function adicionarMensagemChat(de, texto) {
+  chatMensagens.push({ de, texto, hora: new Date().toISOString() });
+  const cont = document.getElementById('chatMensagensCont');
+  const bolha = document.createElement('div');
+  bolha.style.cssText = `display:flex;justify-content:${de === 'visitante' ? 'flex-end' : 'flex-start'}`;
+  bolha.innerHTML = `<div style="max-width:78%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.4;background:${de === 'visitante' ? '#f97316' : 'white'};color:${de === 'visitante' ? 'white' : '#0f0f10'};box-shadow:0 1px 3px rgba(0,0,0,0.08)">${texto}</div>`;
+  cont.appendChild(bolha);
+  cont.scrollTop = cont.scrollHeight;
+  salvarConversaPublica();
+}
+
+async function salvarConversaPublica() {
+  try {
+    await supa.from('atendimento_conversas').upsert({
+      id: chatVisitanteId, user_id: chatDonoId,
+      dados: { mensagens: chatMensagens, criadoEm: chatMensagens[0]?.hora || new Date().toISOString() }
+    });
+  } catch(e) { console.log('Save conversa error:', e); }
+}
+
+async function enviarMensagemChat() {
+  const input = document.getElementById('chatInput');
+  const texto = input.value.trim();
+  if (!texto) return;
+  input.value = '';
+  adicionarMensagemChat('visitante', texto);
+
+  const cont = document.getElementById('chatMensagensCont');
+  const loadingEl = document.createElement('div');
+  loadingEl.id = 'chatLoading';
+  loadingEl.style.cssText = 'display:flex;justify-content:flex-start';
+  loadingEl.innerHTML = '<div style="padding:10px 14px;border-radius:14px;background:white;font-size:13px;color:#a1a1aa">digitando...</div>';
+  cont.appendChild(loadingEl);
+  cont.scrollTop = cont.scrollHeight;
+
+  const faqTexto = chatFaq.map(f => `P: ${f.pergunta}\nR: ${f.resposta}`).join('\n\n');
+  const contextoNegocio = chatEmpresaConfig.sobreNegocio || '';
+  const historico = chatMensagens.slice(-8).map(m => `${m.de === 'visitante' ? 'Cliente' : 'Assistente'}: ${m.texto}`).join('\n');
+
+  const prompt = `Você é o assistente virtual de atendimento de "${chatEmpresaConfig.nome || 'uma empresa'}". Responda de forma curta, simpática e direta, como se fosse uma pessoa da equipe respondendo pelo WhatsApp.
+
+Sobre o negócio: ${contextoNegocio || 'Não informado.'}
+
+Perguntas frequentes e respostas oficiais (use como base quando o assunto bater):
+${faqTexto || 'Nenhuma cadastrada.'}
+
+Se não souber responder algo com certeza, diga que vai confirmar com a equipe e sugira o WhatsApp: ${chatEmpresaConfig.whatsapp || 'não informado'}.
+
+Histórico da conversa:
+${historico}
+
+Responda a última mensagem do cliente de forma natural, em português, sem repetir "Cliente:" ou "Assistente:" na resposta.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.7 })
+    });
+    const data = await res.json();
+    const resposta = data.choices?.[0]?.message?.content || 'Desculpa, não consegui entender. Pode reformular sua pergunta?';
+    document.getElementById('chatLoading')?.remove();
+    adicionarMensagemChat('assistente', resposta.trim());
+  } catch(e) {
+    document.getElementById('chatLoading')?.remove();
+    adicionarMensagemChat('assistente', 'Desculpa, tive um problema para responder agora. Tenta de novo em instantes.');
+  }
+}
+
 async function sair() {
   await supa.auth.signOut();
   currentUser = null; clientesPV = []; transacoesFin = []; empresa = {};
@@ -1008,13 +1289,15 @@ async function syncConfig() {
 function carregarConfig() {
   document.getElementById('cfgEmpresa').value = empresa.nome || '';
   document.getElementById('cfgWhatsapp').value = empresa.whatsapp || '';
+  document.getElementById('cfgSobreNegocio').value = empresa.sobreNegocio || '';
   document.getElementById('cfgNovaSenha').value = '';
 }
 
 async function salvarConfig() {
   empresa = {
     nome: document.getElementById('cfgEmpresa').value.trim(),
-    whatsapp: document.getElementById('cfgWhatsapp').value.trim()
+    whatsapp: document.getElementById('cfgWhatsapp').value.trim(),
+    sobreNegocio: document.getElementById('cfgSobreNegocio').value.trim()
   };
   try {
     await supa.from('configuracoes').upsert({ id: currentUser.id + '_autoia', user_id: currentUser.id, sistema: 'autoia', dados: empresa, atualizado_em: new Date().toISOString() });
@@ -1326,6 +1609,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   const orcId = params.get('orc');
   if (orcId) {
     await mostrarTelaPublicaOrcamento(orcId);
+    return;
+  }
+  const atendDonoId = params.get('atend');
+  if (atendDonoId) {
+    await mostrarTelaPublicaAtendimento(atendDonoId);
     return;
   }
 
