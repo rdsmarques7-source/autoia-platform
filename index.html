@@ -227,10 +227,33 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
       </div>
     </div>
 
-    <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
-      <div class="stat-card"><div class="stat-val" id="atStatConversas" style="color:var(--laranja)">0</div><div class="stat-label">Conversas recebidas</div></div>
-      <div class="stat-card"><div class="stat-val" id="atStatLeads" style="color:var(--green)">0</div><div class="stat-label">Contatos capturados</div></div>
+    <div class="card">
+      <div class="card-title"><div class="card-icon">🤖</div> Sobre o seu negócio (o assistente usa isso pra responder)</div>
+      <p style="font-size:13px;color:var(--ink-muted);margin-bottom:12px">Responda o que fizer sentido pro seu negócio. Se sentir falta de algo, adicione manualmente nas "Perguntas frequentes" mais abaixo.</p>
+      <div class="form-group"><label>Descrição geral do negócio</label><textarea id="cfgSobreNegocio" placeholder="Ex: Fazemos reformas residenciais em geral, com 10 anos de experiência." style="min-height:60px"></textarea></div>
+      <div class="form-group"><label>Tom do assistente</label>
+        <select id="cfgTomAssistente">
+          <option value="simpático e descontraído">Simpático e descontraído</option>
+          <option value="profissional e formal">Profissional e formal</option>
+          <option value="direto e objetivo">Direto e objetivo</option>
+          <option value="caloroso e acolhedor">Caloroso e acolhedor</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Horário de funcionamento</label><input type="text" id="cfgHorario" placeholder="Ex: Seg a sex, 8h às 18h"></div>
+        <div class="form-group"><label>Endereço da loja/oficina</label><input type="text" id="cfgEndereco" placeholder="Ex: Rua X, 123 - Bairro Y"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="cfgFazEntrega"> Fazemos entrega/atendimento a domicílio</label>
+      <div class="form-group"><label>Área de entrega (se aplicável)</label><input type="text" id="cfgAreaEntrega" placeholder="Ex: Toda a região de Campinas e Hortolândia"></div>
+      <button class="btn btn-primary" onclick="salvarConfigAtendimento()">✓ Salvar informações</button>
     </div>
+
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card" onclick="filtrarConversasAtendimento('todos')" style="cursor:pointer"><div class="stat-val" id="atStatConversas" style="color:var(--laranja)">0</div><div class="stat-label">Conversas recebidas</div></div>
+      <div class="stat-card" onclick="filtrarConversasAtendimento('leads')" style="cursor:pointer"><div class="stat-val" id="atStatLeads" style="color:var(--green)">0</div><div class="stat-label">Contatos capturados</div></div>
+      <div class="stat-card" onclick="filtrarConversasAtendimento('semresposta')" style="cursor:pointer"><div class="stat-val" id="atStatSemResposta" style="color:var(--red)">0</div><div class="stat-label">Sem resposta</div></div>
+    </div>
+    <div id="atFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Perguntas frequentes</h2>
@@ -277,26 +300,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
         <div class="form-group"><label>Nome da empresa</label><input type="text" id="cfgEmpresa" placeholder="Ex: Mariana Reformas"></div>
         <div class="form-group"><label>WhatsApp</label><input type="text" id="cfgWhatsapp" placeholder="(11) 99999-9999"></div>
       </div>
-      <div class="form-group"><label>Sobre o negócio (usado pelo assistente de Atendimento)</label><textarea id="cfgSobreNegocio" placeholder="Ex: Fazemos reformas residenciais em geral, com 10 anos de experiência. Atendemos em toda a região de Campinas." style="min-height:70px"></textarea></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title"><div class="card-icon">🤖</div> Configurar assistente de Atendimento</div>
-      <div class="form-group"><label>Tom do assistente</label>
-        <select id="cfgTomAssistente">
-          <option value="simpático e descontraído">Simpático e descontraído</option>
-          <option value="profissional e formal">Profissional e formal</option>
-          <option value="direto e objetivo">Direto e objetivo</option>
-          <option value="caloroso e acolhedor">Caloroso e acolhedor</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Horário de funcionamento</label><input type="text" id="cfgHorario" placeholder="Ex: Seg a sex, 8h às 18h"></div>
-        <div class="form-group"><label>Endereço da loja/oficina</label><input type="text" id="cfgEndereco" placeholder="Ex: Rua X, 123 - Bairro Y"></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="cfgFazEntrega"> Fazemos entrega/atendimento a domicílio</label>
-      <div class="form-group"><label>Área de entrega (se aplicável)</label><input type="text" id="cfgAreaEntrega" placeholder="Ex: Toda a região de Campinas e Hortolândia"></div>
-      <p style="font-size:12px;color:var(--ink-muted)">O assistente vai usar essas informações para responder sobre horário, local e se atende a região do cliente.</p>
     </div>
     <div class="card">
       <div class="card-title"><div class="card-icon">🔑</div> Sua senha de acesso</div>
@@ -1124,23 +1127,61 @@ function enviarLinkAtendimentoWhatsApp() {
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
+let filtroAtendAtivo = 'todos';
+
+function conversaEstaSemResposta(c) {
+  return c.mensagens && c.mensagens.length && c.mensagens[c.mensagens.length - 1].de === 'assistente';
+}
+
+function filtrarConversasAtendimento(tipo) {
+  filtroAtendAtivo = tipo;
+  const labels = { todos: null, leads: '✓ Mostrando: contatos capturados', semresposta: '⏳ Mostrando: pessoas que não responderam por último' };
+  const filtroEl = document.getElementById('atFiltroAtivo');
+  if (labels[tipo]) {
+    filtroEl.style.display = 'block';
+    filtroEl.innerHTML = '<span style="font-size:13px;color:var(--ink-soft)">' + labels[tipo] + ' — <a href="#" onclick="filtrarConversasAtendimento(\'todos\');return false;" style="color:var(--laranja)">limpar filtro</a></span>';
+  } else {
+    filtroEl.style.display = 'none';
+  }
+  renderConversas();
+}
+
 function renderConversas() {
   document.getElementById('atStatConversas').textContent = conversasList.length;
   document.getElementById('atStatLeads').textContent = conversasList.filter(c => c.visitanteWhatsapp || c.visitanteNome).length;
+  document.getElementById('atStatSemResposta').textContent = conversasList.filter(conversaEstaSemResposta).length;
+
+  let listaFiltrada = conversasList;
+  if (filtroAtendAtivo === 'leads') listaFiltrada = conversasList.filter(c => c.visitanteWhatsapp || c.visitanteNome);
+  else if (filtroAtendAtivo === 'semresposta') listaFiltrada = conversasList.filter(conversaEstaSemResposta);
 
   const lista = document.getElementById('atConversasList');
-  if (!conversasList.length) {
-    lista.innerHTML = '<div class="empty-state"><div>💬</div><p>Nenhuma conversa ainda.</p></div>';
+  if (!listaFiltrada.length) {
+    const msgs = { todos: 'Nenhuma conversa ainda.', leads: 'Nenhum contato capturado ainda.', semresposta: 'Nenhuma pendência — todo mundo respondeu! 🎉' };
+    lista.innerHTML = '<div class="empty-state"><div>💬</div><p>' + msgs[filtroAtendAtivo] + '</p></div>';
     return;
   }
-  lista.innerHTML = '<div class="list-header"><h3>' + conversasList.length + ' conversa(s)</h3></div>' +
-    conversasList.map(c => {
+  lista.innerHTML = '<div class="list-header"><h3>' + listaFiltrada.length + ' conversa(s)</h3></div>' +
+    listaFiltrada.map(c => {
       const nome = c.visitanteNome || 'Visitante';
       const ultimaMsg = c.mensagens && c.mensagens.length ? c.mensagens[c.mensagens.length - 1].texto : '';
       const infoExtra = [c.visitanteWhatsapp, c.visitanteLocalizacao].filter(Boolean).join(' • ');
+      const semResposta = conversaEstaSemResposta(c);
+      const botaoReengajar = (semResposta && c.visitanteWhatsapp)
+        ? '<button class="btn btn-outline" onclick="event.stopPropagation();reengajarConversa(\'' + c.id + '\')" style="padding:4px 10px;font-size:11px;border-color:#25d366;color:#25d366">📱 Reengajar</button>'
+        : '';
       return '<div class="list-item" style="cursor:pointer" onclick="verConversa(\'' + c.id + '\')"><div class="item-info"><div class="item-titulo">' + nome + (infoExtra ? ' • ' + infoExtra : '') + '</div><div class="item-sub">' + ultimaMsg.slice(0,70) + '</div></div>' +
-        '<span style="font-size:11px;color:var(--ink-muted)">' + new Date(c.criadoEm).toLocaleDateString('pt-BR') + '</span></div>';
+        '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--ink-muted)">' + new Date(c.criadoEm).toLocaleDateString('pt-BR') + '</span>' + botaoReengajar + '</div></div>';
     }).join('');
+}
+
+function reengajarConversa(id) {
+  const c = conversasList.find(x => x.id === id);
+  if (!c || !c.visitanteWhatsapp) return;
+  const nome = c.visitanteNome ? c.visitanteNome.split(' ')[0] : '';
+  const msg = `Oi${nome ? ' ' + nome : ''}! Vi que a gente tinha começado a conversar por aqui e fiquei sem sua resposta 🙂 Ainda tem interesse ou ficou alguma dúvida que eu possa ajudar?`;
+  const num = c.visitanteWhatsapp.replace(/\D/g, '');
+  window.open('https://wa.me/' + (num.length <= 11 ? '55' + num : num) + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function verConversa(id) {
@@ -1456,6 +1497,7 @@ async function salvarConfig() {
     showToast('✓ Configurações salvas!');
   } catch(e) { showToast('⚠ Erro ao salvar.'); }
 }
+const salvarConfigAtendimento = salvarConfig;
 
 // ── PÓS-VENDA ──
 async function syncClientesPV() {
