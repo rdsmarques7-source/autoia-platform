@@ -279,6 +279,25 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
       </div>
       <div class="form-group"><label>Sobre o negócio (usado pelo assistente de Atendimento)</label><textarea id="cfgSobreNegocio" placeholder="Ex: Fazemos reformas residenciais em geral, com 10 anos de experiência. Atendemos em toda a região de Campinas." style="min-height:70px"></textarea></div>
     </div>
+
+    <div class="card">
+      <div class="card-title"><div class="card-icon">🤖</div> Configurar assistente de Atendimento</div>
+      <div class="form-group"><label>Tom do assistente</label>
+        <select id="cfgTomAssistente">
+          <option value="simpático e descontraído">Simpático e descontraído</option>
+          <option value="profissional e formal">Profissional e formal</option>
+          <option value="direto e objetivo">Direto e objetivo</option>
+          <option value="caloroso e acolhedor">Caloroso e acolhedor</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Horário de funcionamento</label><input type="text" id="cfgHorario" placeholder="Ex: Seg a sex, 8h às 18h"></div>
+        <div class="form-group"><label>Endereço da loja/oficina</label><input type="text" id="cfgEndereco" placeholder="Ex: Rua X, 123 - Bairro Y"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="cfgFazEntrega"> Fazemos entrega/atendimento a domicílio</label>
+      <div class="form-group"><label>Área de entrega (se aplicável)</label><input type="text" id="cfgAreaEntrega" placeholder="Ex: Toda a região de Campinas e Hortolândia"></div>
+      <p style="font-size:12px;color:var(--ink-muted)">O assistente vai usar essas informações para responder sobre horário, local e se atende a região do cliente.</p>
+    </div>
     <div class="card">
       <div class="card-title"><div class="card-icon">🔑</div> Sua senha de acesso</div>
       <div class="form-row">
@@ -1118,7 +1137,8 @@ function renderConversas() {
     conversasList.map(c => {
       const nome = c.visitanteNome || 'Visitante';
       const ultimaMsg = c.mensagens && c.mensagens.length ? c.mensagens[c.mensagens.length - 1].texto : '';
-      return '<div class="list-item" style="cursor:pointer" onclick="verConversa(\'' + c.id + '\')"><div class="item-info"><div class="item-titulo">' + nome + (c.visitanteWhatsapp ? ' • ' + c.visitanteWhatsapp : '') + '</div><div class="item-sub">' + ultimaMsg.slice(0,70) + '</div></div>' +
+      const infoExtra = [c.visitanteWhatsapp, c.visitanteLocalizacao].filter(Boolean).join(' • ');
+      return '<div class="list-item" style="cursor:pointer" onclick="verConversa(\'' + c.id + '\')"><div class="item-info"><div class="item-titulo">' + nome + (infoExtra ? ' • ' + infoExtra : '') + '</div><div class="item-sub">' + ultimaMsg.slice(0,70) + '</div></div>' +
         '<span style="font-size:11px;color:var(--ink-muted)">' + new Date(c.criadoEm).toLocaleDateString('pt-BR') + '</span></div>';
     }).join('');
 }
@@ -1144,6 +1164,7 @@ let chatFaq = [];
 let chatCatalogo = [];
 let chatVisitanteNome = null;
 let chatVisitanteWhatsapp = null;
+let chatVisitanteLocalizacao = null;
 
 async function mostrarTelaPublicaAtendimento(donoId) {
   const loginScreenEl = document.getElementById('loginScreen');
@@ -1193,7 +1214,7 @@ async function salvarConversaPublica() {
   try {
     await supa.from('atendimento_conversas').upsert({
       id: chatVisitanteId, user_id: chatDonoId,
-      dados: { mensagens: chatMensagens, criadoEm: chatMensagens[0]?.hora || new Date().toISOString(), visitanteNome: chatVisitanteNome, visitanteWhatsapp: chatVisitanteWhatsapp }
+      dados: { mensagens: chatMensagens, criadoEm: chatMensagens[0]?.hora || new Date().toISOString(), visitanteNome: chatVisitanteNome, visitanteWhatsapp: chatVisitanteWhatsapp, visitanteLocalizacao: chatVisitanteLocalizacao }
     });
   } catch(e) { console.log('Save conversa error:', e); }
 }
@@ -1220,19 +1241,27 @@ async function enviarMensagemChat() {
     : '';
   const historico = chatMensagens.slice(-8).map(m => `${m.de === 'visitante' ? 'Cliente' : 'Assistente'}: ${m.texto}`).join('\n');
 
-  const prompt = `Você é o assistente virtual de atendimento de "${chatEmpresaConfig.nome || 'uma empresa'}". Responda de forma curta, simpática e direta, como se fosse uma pessoa da equipe respondendo pelo WhatsApp.
+  const prompt = `Você é o assistente virtual de atendimento de "${chatEmpresaConfig.nome || 'uma empresa'}". Seu tom de conversa deve ser: ${chatEmpresaConfig.tomAssistente || 'simpático e descontraído'}.
+
+IMPORTANTE: esta conversa está acontecendo em um CHAT NO SITE da empresa — você É um assistente virtual, NÃO é o WhatsApp e não deve dizer que é uma pessoa. Se o cliente pedir o número de WhatsApp da empresa, informe normalmente (${chatEmpresaConfig.whatsapp || 'não cadastrado ainda'}). Nunca diga que "já estão conversando pelo WhatsApp".
 
 Sobre o negócio: ${contextoNegocio || 'Não informado.'}
+Horário de funcionamento: ${chatEmpresaConfig.horario || 'Não informado — se perguntarem, diga que vai confirmar com a equipe.'}
+Endereço/local de atendimento: ${chatEmpresaConfig.endereco || 'Não informado.'}
+Faz entrega/atendimento a domicílio? ${chatEmpresaConfig.fazEntrega ? 'Sim, na área: ' + (chatEmpresaConfig.areaEntrega || 'não especificada') : 'Não, só atendimento no local.'}
 
 ${catalogoTexto ? 'Tabela de preços/serviços (use para responder perguntas sobre valores):\n' + catalogoTexto + '\n' : ''}
 Perguntas frequentes e respostas oficiais (use como base quando o assunto bater):
 ${faqTexto || 'Nenhuma cadastrada.'}
 
-Se não souber responder algo com certeza, diga que vai confirmar com a equipe e sugira o WhatsApp: ${chatEmpresaConfig.whatsapp || 'não informado'}.
+Se não souber responder algo com certeza, diga que vai confirmar com a equipe e sugira o WhatsApp da empresa.
 
-IMPORTANTE — Captura de contato: ${(chatVisitanteNome && chatVisitanteWhatsapp) ? 'Você já tem o nome e WhatsApp desse cliente, não precisa pedir de novo.' : 'Se o cliente demonstrar interesse real (perguntar preço, disponibilidade, querer fechar, pedir orçamento), peça educadamente o nome e o WhatsApp dele antes de prosseguir, explicando que é para a equipe poder retornar o contato.'}
-Sempre que o cliente informar o nome e/ou WhatsApp dele em qualquer mensagem (mesmo que não tenha sido pedido agora), inclua ao FINAL da sua resposta, numa linha própria, exatamente neste formato (sem isso o dado se perde): [CONTATO:nome=NOME_AQUI;whatsapp=NUMERO_AQUI]
-Omita o campo que não souber. Nunca mencione essa tag para o cliente, ela é só para uso interno do sistema.
+REGRAS DE CAPTURA DE DADOS (siga sempre, com naturalidade, sem parecer um formulário):
+1. Nome e WhatsApp do cliente: ${(chatVisitanteNome && chatVisitanteWhatsapp) ? 'Você já tem esses dados, não precisa pedir de novo.' : 'Logo no início da conversa (após a saudação e a primeira dúvida do cliente), peça o nome e o WhatsApp dele de forma simpática, explicando que é para a equipe poder retornar se precisar.'}
+2. Localização: ${chatVisitanteLocalizacao ? 'Você já sabe onde o cliente mora (' + chatVisitanteLocalizacao + '), não precisa perguntar de novo.' : (chatEmpresaConfig.fazEntrega ? 'Em algum momento natural da conversa, pergunte em que bairro/cidade o cliente mora, para confirmar se a entrega cobre a região dele.' : 'Se fizer sentido, pergunte a cidade do cliente para confirmar se ele consegue vir até o local.')}
+
+Sempre que o cliente informar nome, WhatsApp e/ou localização (cidade/bairro) em qualquer mensagem, inclua ao FINAL da sua resposta, numa linha própria, exatamente neste formato: [CONTATO:nome=NOME_AQUI;whatsapp=NUMERO_AQUI;localizacao=CIDADE_OU_BAIRRO_AQUI]
+Omita os campos que não souber ainda. Nunca mencione essa tag para o cliente, ela é só para uso interno do sistema.
 
 Histórico da conversa:
 ${historico}
@@ -1254,6 +1283,7 @@ Responda a última mensagem do cliente de forma natural, em português, sem repe
         const [chave, valor] = p.split('=').map(s => s && s.trim());
         if (chave === 'nome' && valor) chatVisitanteNome = valor;
         if (chave === 'whatsapp' && valor) chatVisitanteWhatsapp = valor;
+        if (chave === 'localizacao' && valor) chatVisitanteLocalizacao = valor;
       });
       resposta = resposta.replace(/\[CONTATO:[^\]]*\]/, '').trim();
     }
@@ -1402,6 +1432,11 @@ function carregarConfig() {
   document.getElementById('cfgEmpresa').value = empresa.nome || '';
   document.getElementById('cfgWhatsapp').value = empresa.whatsapp || '';
   document.getElementById('cfgSobreNegocio').value = empresa.sobreNegocio || '';
+  document.getElementById('cfgTomAssistente').value = empresa.tomAssistente || 'simpático e descontraído';
+  document.getElementById('cfgHorario').value = empresa.horario || '';
+  document.getElementById('cfgEndereco').value = empresa.endereco || '';
+  document.getElementById('cfgFazEntrega').checked = !!empresa.fazEntrega;
+  document.getElementById('cfgAreaEntrega').value = empresa.areaEntrega || '';
   document.getElementById('cfgNovaSenha').value = '';
 }
 
@@ -1409,7 +1444,12 @@ async function salvarConfig() {
   empresa = {
     nome: document.getElementById('cfgEmpresa').value.trim(),
     whatsapp: document.getElementById('cfgWhatsapp').value.trim(),
-    sobreNegocio: document.getElementById('cfgSobreNegocio').value.trim()
+    sobreNegocio: document.getElementById('cfgSobreNegocio').value.trim(),
+    tomAssistente: document.getElementById('cfgTomAssistente').value,
+    horario: document.getElementById('cfgHorario').value.trim(),
+    endereco: document.getElementById('cfgEndereco').value.trim(),
+    fazEntrega: document.getElementById('cfgFazEntrega').checked,
+    areaEntrega: document.getElementById('cfgAreaEntrega').value.trim()
   };
   try {
     await supa.from('configuracoes').upsert({ id: currentUser.id + '_autoia', user_id: currentUser.id, sistema: 'autoia', dados: empresa, atualizado_em: new Date().toISOString() });
