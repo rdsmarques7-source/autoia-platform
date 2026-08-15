@@ -852,14 +852,56 @@ function renderOrcamentos() {
     listaFiltrada.map(o => {
       const [cor, bg, texto] = badges[o.status] || badges.pendente;
       const link = window.location.origin + window.location.pathname + '?orc=' + o.id;
+      const botaoComprou = o.comprou
+        ? '<button class="btn btn-outline" onclick="event.stopPropagation();alternarCompra(\'' + o.id + '\')" style="padding:4px 10px;font-size:11px;border-color:var(--green);color:var(--green)">💰 Comprou</button>'
+        : '<button class="btn btn-outline" onclick="event.stopPropagation();alternarCompra(\'' + o.id + '\')" style="padding:4px 10px;font-size:11px">Marcar como comprado</button>';
       return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + o.nome + '</div><div class="item-sub">' + o.servico.slice(0,60) + (o.servico.length > 60 ? '...' : '') + '</div></div>' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-valor">' + formatarMoeda(o.total) + '</span>' +
         '<span style="font-size:11px;font-weight:700;color:' + cor + ';background:' + bg + ';padding:4px 10px;border-radius:20px;white-space:nowrap">' + texto + '</span>' +
+        botaoComprou +
         '<button class="btn btn-outline" onclick="abrirModalOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">✏️</button>' +
         '<button class="btn btn-outline" onclick="baixarPdfOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">📄 PDF</button>' +
         '<button class="btn btn-outline" onclick="navigator.clipboard.writeText(\'' + link + '\');showToast(\'📋 Link copiado!\')" style="padding:4px 8px;font-size:11px">🔗</button>' +
         '<button class="btn btn-red" onclick="removerOrcamento(\'' + o.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>';
     }).join('');
+}
+
+async function alternarCompra(id) {
+  const o = orcamentosList.find(x => x.id === id);
+  if (!o) return;
+  const novoValor = !o.comprou;
+
+  const dadosAtualizados = { ...o, comprou: novoValor };
+  delete dadosAtualizados.id;
+  delete dadosAtualizados.status;
+  try {
+    await supa.from('autoia_orcamentos').update({ dados: dadosAtualizados }).eq('id', id).eq('user_id', currentUser.id);
+  } catch(e) { console.log(e); showToast('⚠ Erro ao atualizar.'); return; }
+  o.comprou = novoValor;
+
+  const idFinanceiro = 'orc_fin_' + id;
+  if (novoValor) {
+    // Marca como comprado: cria (ou garante) a entrada no Financeiro
+    const jaExiste = transacoesFin.find(t => t.id === idFinanceiro);
+    if (!jaExiste) {
+      const transacao = { id: idFinanceiro, tipo: 'entrada', descricao: 'Orçamento comprado — ' + o.nome, valor: o.total, data: new Date().toISOString().split('T')[0], forma: 'a_definir', linhaDigitavel: '', origemOrcamento: id };
+      try {
+        await supa.from('financeiro_transacoes').upsert({ id: idFinanceiro, user_id: currentUser.id, dados: transacao });
+        transacoesFin.unshift(transacao);
+      } catch(e) { console.log(e); }
+    }
+    showToast('✓ Marcado como comprado — lançado no Financeiro!');
+  } else {
+    // Desmarcou: remove a entrada correspondente do Financeiro, se existir
+    try {
+      await supa.from('financeiro_transacoes').delete().eq('id', idFinanceiro).eq('user_id', currentUser.id);
+      transacoesFin = transacoesFin.filter(t => t.id !== idFinanceiro);
+    } catch(e) { console.log(e); }
+    showToast('Desmarcado. Removido do Financeiro.');
+  }
+
+  renderOrcamentos();
+  renderFinanceiro();
 }
 
 function gerarTextoFormasPagamento(pag) {
