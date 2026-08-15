@@ -195,14 +195,47 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
       <div class="stat-card" onclick="filtrarClientesUnificados('todos')" style="cursor:pointer"><div class="stat-val" id="cliStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Total cadastrados</div></div>
       <div class="stat-card" onclick="filtrarClientesUnificados('fechado')" style="cursor:pointer"><div class="stat-val" id="cliStatFechados" style="color:var(--green)">0</div><div class="stat-label">Fecharam</div></div>
       <div class="stat-card" onclick="filtrarClientesUnificados('nao_fechado')" style="cursor:pointer"><div class="stat-val" id="cliStatNaoFechados" style="color:var(--red)">0</div><div class="stat-label">Não fecharam</div></div>
+      <div class="stat-card"><div class="stat-val" id="cliStatConversao" style="color:var(--blue)">0%</div><div class="stat-label">Taxa de conversão</div></div>
     </div>
-    <div id="cliFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
+
+    <div class="card" style="padding:1rem 1.5rem">
+      <div style="font-size:12px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">De onde vieram</div>
+      <div id="cliPorOrigem" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+    </div>
+
+    <div id="cliFiltroAtivo" style="display:none;margin:1rem 0"></div>
     <div style="position:relative;margin-bottom:1rem">
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-muted);font-size:14px">🔍</span>
       <input type="text" id="cliBusca" placeholder="Buscar cliente pelo nome..." oninput="renderClientesUnificados()" style="width:100%;padding:10px 12px 10px 36px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;box-sizing:border-box">
     </div>
     <div class="item-list" id="cliList">
       <div class="empty-state"><div>👥</div><p>Nenhum cliente cadastrado ainda.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALHES/EDITAR CLIENTE -->
+<div class="modal-overlay" id="modalClienteDetalhe">
+  <div class="modal-card">
+    <div class="modal-header"><h3>👤 Detalhes do cliente</h3><button class="modal-close" onclick="document.getElementById('modalClienteDetalhe').classList.remove('show')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Nome</label><input type="text" id="cliDetNome"></div>
+        <div class="form-group"><label>Contato</label><input type="text" id="cliDetContato"></div>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="cliDetStatus">
+          <option value="fechado">✓ Fechou</option>
+          <option value="nao_fechado">✕ Não fechou</option>
+          <option value="negociando">💬 Em negociação</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Observações</label><textarea id="cliDetObs" placeholder="Anotações sobre esse cliente..." style="min-height:70px"></textarea></div>
+      <p style="font-size:12px;color:var(--ink-muted)" id="cliDetOrigemInfo"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('modalClienteDetalhe').classList.remove('show')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarClienteDetalhe()">✓ Salvar</button>
     </div>
   </div>
 </div>
@@ -573,7 +606,7 @@ async function entrar() {
 
 async function iniciarSessao() {
   document.getElementById('loginScreen').style.display = 'none';
-  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos(), syncCatalogo(), syncAtendimento()]);
+  await Promise.all([syncConfig(), syncClientesPV(), syncFinanceiro(), syncOrcamentos(), syncCatalogo(), syncAtendimento(), syncClientesOverrides()]);
   carregarConfig();
   renderClientesPV();
   renderFinanceiro();
@@ -1460,26 +1493,55 @@ async function adicionarSugestoesSelecionadas() {
 
 // ── CLIENTES UNIFICADOS ──
 let filtroClientesAtivo = 'todos';
+let clientesOverrides = {};
+let clienteDetalheAtualChave = null;
+
+function chaveCliente(nome, contato) {
+  return btoa(unescape(encodeURIComponent((nome || '').trim().toLowerCase() + '|' + (contato || '').trim()))).replace(/=/g, '');
+}
+
+async function syncClientesOverrides() {
+  if (!currentUser) return;
+  try {
+    const { data } = await supa.from('clientes_overrides').select('*').eq('user_id', currentUser.id);
+    clientesOverrides = {};
+    if (data) data.forEach(r => { clientesOverrides[r.id] = r.dados; });
+  } catch(e) { console.log('Sync overrides error:', e); }
+}
 
 function computarClientesUnificados() {
   const lista = [];
 
   clientesPV.forEach(c => {
-    lista.push({ nome: c.nome, contato: c.email, origem: 'Pós-venda', status: 'fechado', statusTexto: '✓ Cliente ativo', data: c.dataEntrega, valor: null });
+    lista.push({ nome: c.nome, contato: c.email, origem: 'Pós-venda', status: 'fechado', data: c.dataEntrega, valor: null });
   });
 
   orcamentosList.forEach(o => {
-    let status, statusTexto;
-    if (o.status === 'aprovado') { status = 'fechado'; statusTexto = '✓ Orçamento aprovado'; }
-    else if (o.status === 'recusado') { status = 'nao_fechado'; statusTexto = '✕ Orçamento recusado'; }
-    else { status = 'nao_fechado'; statusTexto = '⏳ Orçamento aguardando'; }
-    lista.push({ nome: o.nome, contato: o.whatsapp, origem: 'Orçamento', status, statusTexto, data: (o.criadoEm || '').split('T')[0], valor: o.total });
+    let status;
+    if (o.status === 'aprovado') status = 'fechado';
+    else status = 'nao_fechado';
+    lista.push({ nome: o.nome, contato: o.whatsapp, origem: 'Orçamento', status, data: (o.criadoEm || '').split('T')[0], valor: o.total });
   });
 
   conversasList.forEach(c => {
     if (!c.visitanteNome && !c.visitanteWhatsapp) return;
-    lista.push({ nome: c.visitanteNome || 'Contato do chat', contato: c.visitanteWhatsapp, origem: 'Atendimento', status: 'nao_fechado', statusTexto: '💬 Conversou, não fechou ainda', data: (c.criadoEm || '').split('T')[0], valor: null });
+    lista.push({ nome: c.visitanteNome || 'Contato do chat', contato: c.visitanteWhatsapp, origem: 'Atendimento', status: 'nao_fechado', data: (c.criadoEm || '').split('T')[0], valor: null });
   });
+
+  // Aplica edições manuais (overrides) por cima dos dados originais
+  lista.forEach(c => {
+    c.chave = chaveCliente(c.nome, c.contato);
+    const ov = clientesOverrides[c.chave];
+    if (ov) {
+      if (ov.nome) c.nome = ov.nome;
+      if (ov.contato) c.contato = ov.contato;
+      if (ov.status) c.status = ov.status;
+      if (ov.observacoes) c.observacoes = ov.observacoes;
+    }
+  });
+
+  const statusTextos = { fechado: '✓ Fechou', nao_fechado: '✕ Não fechou', negociando: '💬 Em negociação' };
+  lista.forEach(c => { c.statusTexto = statusTextos[c.status] || statusTextos.nao_fechado; });
 
   lista.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   return lista;
@@ -1500,9 +1562,24 @@ function filtrarClientesUnificados(tipo) {
 
 function renderClientesUnificados() {
   const todos = computarClientesUnificados();
+  const fechados = todos.filter(c => c.status === 'fechado').length;
+  const naoFechados = todos.filter(c => c.status === 'nao_fechado').length;
+  const conversao = todos.length ? Math.round((fechados / todos.length) * 100) : 0;
+
   document.getElementById('cliStatTotal').textContent = todos.length;
-  document.getElementById('cliStatFechados').textContent = todos.filter(c => c.status === 'fechado').length;
-  document.getElementById('cliStatNaoFechados').textContent = todos.filter(c => c.status === 'nao_fechado').length;
+  document.getElementById('cliStatFechados').textContent = fechados;
+  document.getElementById('cliStatNaoFechados').textContent = naoFechados;
+  document.getElementById('cliStatConversao').textContent = conversao + '%';
+
+  // Detalhamento por origem
+  const origens = { 'Pós-venda': 0, 'Orçamento': 0, 'Atendimento': 0 };
+  todos.forEach(c => { if (origens[c.origem] !== undefined) origens[c.origem]++; });
+  const coresOrigem = { 'Pós-venda': '#f97316', 'Orçamento': '#2563eb', 'Atendimento': '#16a34a' };
+  document.getElementById('cliPorOrigem').innerHTML = Object.keys(origens).map(o => `
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--surface);border-radius:20px;font-size:12px;font-weight:600">
+      <span style="width:8px;height:8px;border-radius:50%;background:${coresOrigem[o]}"></span> ${o}: ${origens[o]}
+    </div>
+  `).join('');
 
   const busca = (document.getElementById('cliBusca')?.value || '').trim().toLowerCase();
   let filtrados = todos;
@@ -1515,14 +1592,43 @@ function renderClientesUnificados() {
     lista.innerHTML = '<div class="empty-state"><div>👥</div><p>' + msg + '</p></div>';
     return;
   }
-  const corStatus = { fechado: 'var(--green)', nao_fechado: 'var(--red)' };
-  const bgStatus = { fechado: 'var(--green-bg)', nao_fechado: 'var(--red-bg)' };
+  const corStatus = { fechado: 'var(--green)', nao_fechado: 'var(--red)', negociando: '#854d0e' };
+  const bgStatus = { fechado: 'var(--green-bg)', nao_fechado: 'var(--red-bg)', negociando: '#fef9c3' };
   lista.innerHTML = '<div class="list-header"><h3>' + filtrados.length + ' cliente(s)</h3></div>' +
     filtrados.map(c => {
-      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + c.nome + '</div><div class="item-sub">' + (c.contato || 'sem contato') + ' • via ' + c.origem + (c.data ? ' • ' + fmt(c.data) : '') + '</div></div>' +
+      return '<div class="list-item" style="cursor:pointer" onclick="abrirDetalheCliente(\'' + c.chave + '\')"><div class="item-info"><div class="item-titulo">' + c.nome + '</div><div class="item-sub">' + (c.contato || 'sem contato') + ' • via ' + c.origem + (c.data ? ' • ' + fmt(c.data) : '') + '</div></div>' +
         '<div style="display:flex;align-items:center;gap:8px">' + (c.valor ? '<span class="item-valor">' + formatarMoeda(c.valor) + '</span>' : '') +
         '<span style="font-size:11px;font-weight:700;color:' + corStatus[c.status] + ';background:' + bgStatus[c.status] + ';padding:4px 10px;border-radius:20px;white-space:nowrap">' + c.statusTexto + '</span></div></div>';
     }).join('');
+}
+
+function abrirDetalheCliente(chave) {
+  const todos = computarClientesUnificados();
+  const c = todos.find(x => x.chave === chave);
+  if (!c) return;
+  clienteDetalheAtualChave = chave;
+  document.getElementById('cliDetNome').value = c.nome;
+  document.getElementById('cliDetContato').value = c.contato || '';
+  document.getElementById('cliDetStatus').value = c.status;
+  document.getElementById('cliDetObs').value = c.observacoes || '';
+  document.getElementById('cliDetOrigemInfo').textContent = 'Origem: ' + c.origem + (c.data ? ' • ' + fmt(c.data) : '') + (c.valor ? ' • ' + formatarMoeda(c.valor) : '');
+  document.getElementById('modalClienteDetalhe').classList.add('show');
+}
+
+async function salvarClienteDetalhe() {
+  const nome = document.getElementById('cliDetNome').value.trim();
+  const contato = document.getElementById('cliDetContato').value.trim();
+  const status = document.getElementById('cliDetStatus').value;
+  const observacoes = document.getElementById('cliDetObs').value.trim();
+
+  const override = { nome, contato, status, observacoes };
+  clientesOverrides[clienteDetalheAtualChave] = override;
+  try {
+    await supa.from('clientes_overrides').upsert({ id: clienteDetalheAtualChave, user_id: currentUser.id, dados: override, atualizado_em: new Date().toISOString() });
+  } catch(e) { console.log('Save override error:', e); }
+  document.getElementById('modalClienteDetalhe').classList.remove('show');
+  renderClientesUnificados();
+  showToast('✓ Cliente atualizado!');
 }
 
 async function sair() {
