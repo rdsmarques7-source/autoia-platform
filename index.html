@@ -191,9 +191,14 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 <div class="view" id="viewOrcamentos">
   <div class="page">
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-val" id="orcStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Total enviados</div></div>
-      <div class="stat-card"><div class="stat-val" id="orcStatAprovados" style="color:var(--green)">0</div><div class="stat-label">Aprovados</div></div>
-      <div class="stat-card"><div class="stat-val" id="orcStatPendentes" style="color:#854d0e">0</div><div class="stat-label">Aguardando</div></div>
+      <div class="stat-card" onclick="filtrarOrcamentos('todos')" style="cursor:pointer"><div class="stat-val" id="orcStatTotal" style="color:var(--laranja)">0</div><div class="stat-label">Total enviados</div></div>
+      <div class="stat-card" onclick="filtrarOrcamentos('aprovado')" style="cursor:pointer"><div class="stat-val" id="orcStatAprovados" style="color:var(--green)">0</div><div class="stat-label">Aprovados</div></div>
+      <div class="stat-card" onclick="filtrarOrcamentos('pendente')" style="cursor:pointer"><div class="stat-val" id="orcStatPendentes" style="color:#854d0e">0</div><div class="stat-label">Aguardando</div></div>
+    </div>
+    <div id="orcFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
+    <div style="position:relative;margin-bottom:1rem">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-muted);font-size:14px">🔍</span>
+      <input type="text" id="orcBusca" placeholder="Buscar cliente pelo nome..." oninput="renderOrcamentos()" style="width:100%;padding:10px 12px 10px 36px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;box-sizing:border-box">
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Orçamentos</h2>
@@ -642,19 +647,40 @@ async function removerOrcamento(id) {
   showToast('Orçamento removido.');
 }
 
+let filtroOrcAtivo = 'todos';
+
+function filtrarOrcamentos(tipo) {
+  filtroOrcAtivo = tipo;
+  const labels = { todos: null, aprovado: '✓ Mostrando: orçamentos aprovados', pendente: '⏳ Mostrando: orçamentos aguardando resposta' };
+  const filtroEl = document.getElementById('orcFiltroAtivo');
+  if (labels[tipo]) {
+    filtroEl.style.display = 'block';
+    filtroEl.innerHTML = '<span style="font-size:13px;color:var(--ink-soft)">' + labels[tipo] + ' — <a href="#" onclick="filtrarOrcamentos(\'todos\');return false;" style="color:var(--laranja)">limpar filtro</a></span>';
+  } else {
+    filtroEl.style.display = 'none';
+  }
+  renderOrcamentos();
+}
+
 function renderOrcamentos() {
   document.getElementById('orcStatTotal').textContent = orcamentosList.length;
   document.getElementById('orcStatAprovados').textContent = orcamentosList.filter(o => o.status === 'aprovado').length;
   document.getElementById('orcStatPendentes').textContent = orcamentosList.filter(o => o.status === 'pendente').length;
 
+  const busca = (document.getElementById('orcBusca')?.value || '').trim().toLowerCase();
+  let listaFiltrada = orcamentosList;
+  if (filtroOrcAtivo !== 'todos') listaFiltrada = listaFiltrada.filter(o => o.status === filtroOrcAtivo);
+  if (busca) listaFiltrada = listaFiltrada.filter(o => o.nome.toLowerCase().includes(busca));
+
   const lista = document.getElementById('orcList');
-  if (!orcamentosList.length) {
-    lista.innerHTML = '<div class="empty-state"><div>📄</div><p>Nenhum orçamento criado ainda.</p></div>';
+  if (!listaFiltrada.length) {
+    const msg = orcamentosList.length ? 'Nenhum orçamento encontrado com esse filtro.' : 'Nenhum orçamento criado ainda.';
+    lista.innerHTML = '<div class="empty-state"><div>📄</div><p>' + msg + '</p></div>';
     return;
   }
   const badges = { pendente: ['#854d0e','#fef9c3','⏳ Aguardando'], aprovado: ['var(--green)','var(--green-bg)','✓ Aprovado'], recusado: ['var(--red)','var(--red-bg)','✕ Recusado'] };
-  lista.innerHTML = '<div class="list-header"><h3>Todos os orçamentos (' + orcamentosList.length + ')</h3></div>' +
-    orcamentosList.map(o => {
+  lista.innerHTML = '<div class="list-header"><h3>' + listaFiltrada.length + ' orçamento(s)</h3></div>' +
+    listaFiltrada.map(o => {
       const [cor, bg, texto] = badges[o.status] || badges.pendente;
       const link = window.location.origin + window.location.pathname + '?orc=' + o.id;
       return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + o.nome + '</div><div class="item-sub">' + o.servico.slice(0,60) + (o.servico.length > 60 ? '...' : '') + '</div></div>' +
