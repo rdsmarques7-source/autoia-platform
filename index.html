@@ -276,6 +276,11 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 <!-- MÓDULO: FINANCEIRO -->
 <div class="view" id="viewFinanceiro">
   <div class="page">
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:1rem">
+      <button class="btn btn-outline" onclick="mudarMesFinanceiro(-1)" style="padding:6px 12px">‹</button>
+      <span id="finMesLabel" style="font-size:15px;font-weight:700;min-width:140px;text-align:center"></span>
+      <button class="btn btn-outline" onclick="mudarMesFinanceiro(1)" style="padding:6px 12px">›</button>
+    </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-val" id="finEntradas" style="color:var(--green)">R$ 0</div><div class="stat-label">Entradas do mês</div></div>
       <div class="stat-card"><div class="stat-val" id="finSaidas" style="color:var(--red)">R$ 0</div><div class="stat-label">Saídas do mês</div></div>
@@ -341,6 +346,17 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
         <div class="form-group"><label>Valor <span class="req">*</span></label><input type="text" id="tValor" placeholder="Ex: 500,00"></div>
         <div class="form-group"><label>Data <span class="req">*</span></label><input type="date" id="tData"></div>
       </div>
+      <div class="form-group"><label>Forma de pagamento</label>
+        <select id="tForma" onchange="document.getElementById('tLinhaDigitavelGrupo').style.display=this.value==='boleto'?'block':'none'">
+          <option value="pix">Pix</option>
+          <option value="dinheiro">Dinheiro</option>
+          <option value="cartao_credito">Cartão de crédito</option>
+          <option value="cartao_debito">Cartão de débito</option>
+          <option value="boleto">Boleto</option>
+          <option value="transferencia">Transferência</option>
+        </select>
+      </div>
+      <div class="form-group" id="tLinhaDigitavelGrupo" style="display:none"><label>Linha digitável do boleto</label><input type="text" id="tLinhaDigitavel" placeholder="Ex: 34191.79001 01043.510047..."></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="fecharModalTransacao()">Cancelar</button>
@@ -926,11 +942,26 @@ async function responderOrcamentoPublico(orcId, novoStatus) {
     alert('Por favor, digite seu nome para confirmar.');
     return;
   }
-  const { data } = await supa.from('autoia_orcamentos').select('dados').eq('id', orcId).single();
+  const { data } = await supa.from('autoia_orcamentos').select('user_id, dados').eq('id', orcId).single();
   const dadosAtualizados = { ...data.dados };
   if (novoStatus === 'aprovado') {
     dadosAtualizados.aprovadoPor = nomeInput.value.trim();
     dadosAtualizados.aprovadoEm = new Date().toISOString();
+
+    // Cria automaticamente uma entrada prevista no Financeiro do dono
+    try {
+      const transacao = {
+        id: 'orc_fin_' + orcId,
+        tipo: 'entrada',
+        descricao: 'Orçamento aprovado — ' + dadosAtualizados.nome,
+        valor: dadosAtualizados.total,
+        data: new Date().toISOString().split('T')[0],
+        forma: 'a_definir',
+        linhaDigitavel: '',
+        origemOrcamento: orcId
+      };
+      await supa.from('financeiro_transacoes').insert({ id: transacao.id, user_id: data.user_id, dados: transacao });
+    } catch(e) { console.log('Auto-lançamento financeiro error:', e); }
   }
   await supa.from('autoia_orcamentos').update({ status: novoStatus, dados: dadosAtualizados }).eq('id', orcId);
   mostrarTelaPublicaOrcamento(orcId);
@@ -1731,11 +1762,13 @@ async function syncFinanceiro() {
 
 function abrirModalTransacao() {
   document.getElementById('tData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('tForma').value = 'pix';
+  document.getElementById('tLinhaDigitavelGrupo').style.display = 'none';
   document.getElementById('modalTransacao').classList.add('show');
 }
 function fecharModalTransacao() {
   document.getElementById('modalTransacao').classList.remove('show');
-  ['tDescricao','tValor'].forEach(id => document.getElementById(id).value = '');
+  ['tDescricao','tValor','tLinhaDigitavel'].forEach(id => document.getElementById(id).value = '');
 }
 
 async function salvarTransacao() {
@@ -1743,11 +1776,13 @@ async function salvarTransacao() {
   const descricao = document.getElementById('tDescricao').value.trim();
   const valorTexto = document.getElementById('tValor').value.trim().replace(',', '.');
   const data = document.getElementById('tData').value;
+  const forma = document.getElementById('tForma').value;
+  const linhaDigitavel = document.getElementById('tLinhaDigitavel').value.trim();
   const valor = parseFloat(valorTexto);
 
   if (!descricao || !valor || !data || isNaN(valor)) { showToast('⚠ Preencha todos os campos corretamente!'); return; }
 
-  const transacao = { id: Date.now().toString(), tipo, descricao, valor, data };
+  const transacao = { id: Date.now().toString(), tipo, descricao, valor, data, forma, linhaDigitavel: forma === 'boleto' ? linhaDigitavel : '' };
   transacoesFin.unshift(transacao);
   try {
     await supa.from('financeiro_transacoes').upsert({ id: transacao.id, user_id: currentUser.id, dados: transacao, atualizado_em: new Date().toISOString() });
@@ -1767,10 +1802,24 @@ async function removerTransacao(id) {
 
 function formatarMoeda(v) { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+const nomesFormaPagamento = { pix: 'Pix', dinheiro: 'Dinheiro', cartao_credito: 'Cartão de crédito', cartao_debito: 'Cartão de débito', boleto: 'Boleto', transferencia: 'Transferência', a_definir: 'Forma a definir' };
+
+// ── NAVEGAÇÃO DE MÊS ──
+let mesSelecionadoFin = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+
+function mudarMesFinanceiro(direcao) {
+  const [ano, mes] = mesSelecionadoFin.split('-').map(Number);
+  const d = new Date(ano, mes - 1 + direcao, 1);
+  mesSelecionadoFin = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  renderFinanceiro();
+}
+
 function renderFinanceiro() {
-  const hoje = new Date();
-  const mesAtual = hoje.toISOString().slice(0, 7);
-  const doMes = transacoesFin.filter(t => t.data.startsWith(mesAtual));
+  const nomesMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const [ano, mes] = mesSelecionadoFin.split('-').map(Number);
+  document.getElementById('finMesLabel').textContent = nomesMeses[mes - 1] + ' de ' + ano;
+
+  const doMes = transacoesFin.filter(t => t.data.startsWith(mesSelecionadoFin));
   const entradas = doMes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0);
   const saidas = doMes.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0);
   const saldo = entradas - saidas;
@@ -1782,13 +1831,15 @@ function renderFinanceiro() {
   saldoEl.style.color = saldo >= 0 ? 'var(--green)' : 'var(--red)';
 
   const lista = document.getElementById('finList');
-  if (!transacoesFin.length) {
-    lista.innerHTML = '<div class="empty-state"><div>💰</div><p>Nenhuma movimentação cadastrada ainda.</p></div>';
+  if (!doMes.length) {
+    lista.innerHTML = '<div class="empty-state"><div>💰</div><p>Nenhuma movimentação neste mês.</p></div>';
     return;
   }
-  lista.innerHTML = '<div class="list-header"><h3>Últimas movimentações</h3></div>' +
-    transacoesFin.slice(0, 50).map(t => {
-      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + t.descricao + '</div><div class="item-sub">' + fmt(t.data) + '</div></div>' +
+  lista.innerHTML = '<div class="list-header"><h3>Movimentações do mês (' + doMes.length + ')</h3></div>' +
+    doMes.map(t => {
+      const formaTexto = nomesFormaPagamento[t.forma] || '';
+      const linhaInfo = (t.forma === 'boleto' && t.linhaDigitavel) ? '<div style="font-size:10px;color:var(--ink-muted);margin-top:2px">📄 ' + t.linhaDigitavel + '</div>' : '';
+      return '<div class="list-item"><div class="item-info"><div class="item-titulo">' + t.descricao + '</div><div class="item-sub">' + fmt(t.data) + (formaTexto ? ' • ' + formaTexto : '') + '</div>' + linhaInfo + '</div>' +
         '<div style="display:flex;align-items:center;gap:10px"><span class="item-valor ' + t.tipo + '">' + (t.tipo === 'entrada' ? '+' : '-') + ' ' + formatarMoeda(t.valor) + '</span>' +
         '<button class="btn btn-red" onclick="removerTransacao(\'' + t.id + '\')" style="padding:4px 8px;font-size:11px">🗑️</button></div></div>';
     }).join('');
