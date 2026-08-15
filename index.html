@@ -234,7 +234,10 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Perguntas frequentes</h2>
-      <button class="btn btn-primary" onclick="abrirModalFaq()">➕ Nova pergunta</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="gerarSugestoesFaq()" id="btnGerarSugestoes">🤖 Sugerir perguntas com IA</button>
+        <button class="btn btn-primary" onclick="abrirModalFaq()">➕ Nova pergunta</button>
+      </div>
     </div>
     <div class="item-list" id="atFaqList" style="margin-bottom:1.5rem">
       <div class="empty-state"><div>❓</div><p>Nenhuma pergunta cadastrada ainda. Adicione as dúvidas mais comuns dos seus clientes.</p></div>
@@ -339,6 +342,21 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline btn-full" onclick="document.getElementById('modalCatalogo').classList.remove('show')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SUGESTÕES DE FAQ POR IA -->
+<div class="modal-overlay" id="modalSugestoesFaq">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-header"><h3>🤖 Sugestões de perguntas</h3><button class="modal-close" onclick="document.getElementById('modalSugestoesFaq').classList.remove('show')">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-muted);margin-bottom:1rem">Marque as que fazem sentido para o seu negócio. Você pode editar a resposta depois de adicionar.</p>
+      <div id="listaSugestoesFaq"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('modalSugestoesFaq').classList.remove('show')">Cancelar</button>
+      <button class="btn btn-primary" onclick="adicionarSugestoesSelecionadas()">✓ Adicionar selecionadas</button>
     </div>
   </div>
 </div>
@@ -1123,6 +1141,7 @@ let chatMensagens = [];
 let chatDonoId = null;
 let chatEmpresaConfig = {};
 let chatFaq = [];
+let chatCatalogo = [];
 
 async function mostrarTelaPublicaAtendimento(donoId) {
   const loginScreenEl = document.getElementById('loginScreen');
@@ -1131,8 +1150,10 @@ async function mostrarTelaPublicaAtendimento(donoId) {
 
   const { data: cfgEmpresa } = await supa.from('configuracoes').select('dados').eq('user_id', donoId).eq('sistema', 'autoia').single();
   const { data: cfgAtend } = await supa.from('atendimento_config').select('dados').eq('user_id', donoId).single();
+  const { data: catalogoPublico } = await supa.from('catalogo_itens').select('dados').eq('user_id', donoId);
   chatEmpresaConfig = (cfgEmpresa && cfgEmpresa.dados) ? cfgEmpresa.dados : {};
   chatFaq = (cfgAtend && cfgAtend.dados && cfgAtend.dados.faq) ? cfgAtend.dados.faq : [];
+  chatCatalogo = catalogoPublico ? catalogoPublico.map(r => r.dados) : [];
 
   chatVisitanteId = 'conv_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   chatMensagens = [];
@@ -1192,12 +1213,16 @@ async function enviarMensagemChat() {
 
   const faqTexto = chatFaq.map(f => `P: ${f.pergunta}\nR: ${f.resposta}`).join('\n\n');
   const contextoNegocio = chatEmpresaConfig.sobreNegocio || '';
+  const catalogoTexto = chatCatalogo.length
+    ? chatCatalogo.map(i => `${i.nome}: ${formatarMoeda(parseFloat(i.valor.toString().replace(',','.')) || 0)}`).join('; ')
+    : '';
   const historico = chatMensagens.slice(-8).map(m => `${m.de === 'visitante' ? 'Cliente' : 'Assistente'}: ${m.texto}`).join('\n');
 
   const prompt = `Você é o assistente virtual de atendimento de "${chatEmpresaConfig.nome || 'uma empresa'}". Responda de forma curta, simpática e direta, como se fosse uma pessoa da equipe respondendo pelo WhatsApp.
 
 Sobre o negócio: ${contextoNegocio || 'Não informado.'}
 
+${catalogoTexto ? 'Tabela de preços/serviços (use para responder perguntas sobre valores):\n' + catalogoTexto + '\n' : ''}
 Perguntas frequentes e respostas oficiais (use como base quando o assunto bater):
 ${faqTexto || 'Nenhuma cadastrada.'}
 
@@ -1222,6 +1247,77 @@ Responda a última mensagem do cliente de forma natural, em português, sem repe
     document.getElementById('chatLoading')?.remove();
     adicionarMensagemChat('assistente', 'Desculpa, tive um problema para responder agora. Tenta de novo em instantes.');
   }
+}
+
+// ── SUGESTÕES DE FAQ POR IA ──
+let sugestoesFaqAtuais = [];
+
+async function gerarSugestoesFaq() {
+  const btn = document.getElementById('btnGerarSugestoes');
+  btn.disabled = true;
+  btn.textContent = 'Gerando...';
+
+  const catalogoTexto = catalogoItens.length
+    ? catalogoItens.map(i => `${i.nome}: ${formatarMoeda(parseFloat(i.valor.toString().replace(',','.')) || 0)}`).join('; ')
+    : 'Nenhum item cadastrado.';
+
+  const prompt = `Você ajuda um pequeno negócio a montar um FAQ para um assistente de atendimento automático via chat.
+
+Sobre o negócio: ${empresa.sobreNegocio || empresa.nome || 'não informado'}
+Tabela de preços/serviços cadastrados: ${catalogoTexto}
+WhatsApp de contato: ${empresa.whatsapp || 'não informado'}
+
+Gere 6 perguntas frequentes que clientes normalmente fariam para esse tipo de negócio, com respostas curtas e prontas (use os preços da tabela quando fizer sentido). Retorne SOMENTE um JSON válido, no formato:
+[{"pergunta":"...","resposta":"..."}, ...]
+Sem texto antes ou depois, sem markdown, só o array JSON.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 800, temperature: 0.7 })
+    });
+    const data = await res.json();
+    let texto = (data.choices?.[0]?.message?.content || '[]').trim();
+    texto = texto.replace(/```json|```/g, '').trim();
+    sugestoesFaqAtuais = JSON.parse(texto);
+  } catch(e) {
+    showToast('⚠ Erro ao gerar sugestões. Tente novamente.');
+    btn.disabled = false;
+    btn.textContent = '🤖 Sugerir perguntas com IA';
+    return;
+  }
+
+  renderSugestoesFaq();
+  document.getElementById('modalSugestoesFaq').classList.add('show');
+  btn.disabled = false;
+  btn.textContent = '🤖 Sugerir perguntas com IA';
+}
+
+function renderSugestoesFaq() {
+  const cont = document.getElementById('listaSugestoesFaq');
+  cont.innerHTML = sugestoesFaqAtuais.map((s, i) => `
+    <label style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;align-items:flex-start">
+      <input type="checkbox" id="sugFaq${i}" checked style="margin-top:3px">
+      <div><div style="font-size:13px;font-weight:700">${s.pergunta}</div><div style="font-size:12px;color:var(--ink-muted);margin-top:2px">${s.resposta}</div></div>
+    </label>
+  `).join('');
+}
+
+async function adicionarSugestoesSelecionadas() {
+  let adicionadas = 0;
+  sugestoesFaqAtuais.forEach((s, i) => {
+    const checkbox = document.getElementById('sugFaq' + i);
+    if (checkbox && checkbox.checked) {
+      faqList.push({ pergunta: s.pergunta, resposta: s.resposta });
+      adicionadas++;
+    }
+  });
+  if (adicionadas === 0) { showToast('⚠ Selecione pelo menos uma pergunta.'); return; }
+  await salvarFaqNoBanco();
+  document.getElementById('modalSugestoesFaq').classList.remove('show');
+  renderFaq();
+  showToast('✓ ' + adicionadas + ' pergunta(s) adicionada(s)!');
 }
 
 async function sair() {
