@@ -1142,6 +1142,8 @@ let chatDonoId = null;
 let chatEmpresaConfig = {};
 let chatFaq = [];
 let chatCatalogo = [];
+let chatVisitanteNome = null;
+let chatVisitanteWhatsapp = null;
 
 async function mostrarTelaPublicaAtendimento(donoId) {
   const loginScreenEl = document.getElementById('loginScreen');
@@ -1191,7 +1193,7 @@ async function salvarConversaPublica() {
   try {
     await supa.from('atendimento_conversas').upsert({
       id: chatVisitanteId, user_id: chatDonoId,
-      dados: { mensagens: chatMensagens, criadoEm: chatMensagens[0]?.hora || new Date().toISOString() }
+      dados: { mensagens: chatMensagens, criadoEm: chatMensagens[0]?.hora || new Date().toISOString(), visitanteNome: chatVisitanteNome, visitanteWhatsapp: chatVisitanteWhatsapp }
     });
   } catch(e) { console.log('Save conversa error:', e); }
 }
@@ -1228,6 +1230,10 @@ ${faqTexto || 'Nenhuma cadastrada.'}
 
 Se não souber responder algo com certeza, diga que vai confirmar com a equipe e sugira o WhatsApp: ${chatEmpresaConfig.whatsapp || 'não informado'}.
 
+IMPORTANTE — Captura de contato: ${(chatVisitanteNome && chatVisitanteWhatsapp) ? 'Você já tem o nome e WhatsApp desse cliente, não precisa pedir de novo.' : 'Se o cliente demonstrar interesse real (perguntar preço, disponibilidade, querer fechar, pedir orçamento), peça educadamente o nome e o WhatsApp dele antes de prosseguir, explicando que é para a equipe poder retornar o contato.'}
+Sempre que o cliente informar o nome e/ou WhatsApp dele em qualquer mensagem (mesmo que não tenha sido pedido agora), inclua ao FINAL da sua resposta, numa linha própria, exatamente neste formato (sem isso o dado se perde): [CONTATO:nome=NOME_AQUI;whatsapp=NUMERO_AQUI]
+Omita o campo que não souber. Nunca mencione essa tag para o cliente, ela é só para uso interno do sistema.
+
 Histórico da conversa:
 ${historico}
 
@@ -1240,7 +1246,17 @@ Responda a última mensagem do cliente de forma natural, em português, sem repe
       body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.7 })
     });
     const data = await res.json();
-    const resposta = data.choices?.[0]?.message?.content || 'Desculpa, não consegui entender. Pode reformular sua pergunta?';
+    let resposta = data.choices?.[0]?.message?.content || 'Desculpa, não consegui entender. Pode reformular sua pergunta?';
+    const matchContato = resposta.match(/\[CONTATO:([^\]]*)\]/);
+    if (matchContato) {
+      const partes = matchContato[1].split(';');
+      partes.forEach(p => {
+        const [chave, valor] = p.split('=').map(s => s && s.trim());
+        if (chave === 'nome' && valor) chatVisitanteNome = valor;
+        if (chave === 'whatsapp' && valor) chatVisitanteWhatsapp = valor;
+      });
+      resposta = resposta.replace(/\[CONTATO:[^\]]*\]/, '').trim();
+    }
     document.getElementById('chatLoading')?.remove();
     adicionarMensagemChat('assistente', resposta.trim());
   } catch(e) {
