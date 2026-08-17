@@ -2047,10 +2047,9 @@ async function salvarTransacao() {
   if (!descricao || !valor || !data || isNaN(valor)) { showToast('⚠ Preencha todos os campos corretamente!'); return; }
 
   const transacao = { id: Date.now().toString(), tipo, descricao, valor, data, forma, linhaDigitavel: forma === 'boleto' ? linhaDigitavel : '' };
+  const { error } = await supa.from('financeiro_transacoes').upsert({ id: transacao.id, user_id: currentUser.id, dados: transacao, atualizado_em: new Date().toISOString() });
+  if (error) { showToast('⚠ Erro ao salvar: ' + error.message); console.log(error); return; }
   transacoesFin.unshift(transacao);
-  try {
-    await supa.from('financeiro_transacoes').upsert({ id: transacao.id, user_id: currentUser.id, dados: transacao, atualizado_em: new Date().toISOString() });
-  } catch(e) { console.log(e); }
   fecharModalTransacao();
   renderFinanceiro();
   showToast('✓ Movimentação salva!');
