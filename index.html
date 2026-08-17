@@ -308,6 +308,11 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
     </div>
     <div id="atFiltroAtivo" style="display:none;margin-bottom:1rem"></div>
 
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:1rem">Conversas recentes</h2>
+    <div class="item-list" id="atConversasList" style="margin-bottom:1.5rem">
+      <div class="empty-state"><div>💬</div><p>Nenhuma conversa ainda.</p></div>
+    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="font-size:18px;font-weight:800">Perguntas frequentes</h2>
       <div style="display:flex;gap:8px">
@@ -315,13 +320,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--surface);
         <button class="btn btn-primary" onclick="abrirModalFaq()">➕ Nova pergunta</button>
       </div>
     </div>
-    <div class="item-list" id="atFaqList" style="margin-bottom:1.5rem">
+    <div class="item-list" id="atFaqList">
       <div class="empty-state"><div>❓</div><p>Nenhuma pergunta cadastrada ainda. Adicione as dúvidas mais comuns dos seus clientes.</p></div>
-    </div>
-
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:1rem">Conversas recentes</h2>
-    <div class="item-list" id="atConversasList">
-      <div class="empty-state"><div>💬</div><p>Nenhuma conversa ainda.</p></div>
     </div>
   </div>
 </div>
