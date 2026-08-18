@@ -719,7 +719,7 @@ async function gerarDescricaoIA() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: `Reescreva essa descrição de serviço de forma mais profissional e clara, para um orçamento formal. Mantenha curto (2-3 frases). Descrição original: "${textoAtual}". Retorne só o texto reescrito, sem comentários.` }],
         max_tokens: 200, temperature: 0.6
       })
@@ -1444,7 +1444,7 @@ Responda a última mensagem do cliente de forma natural, em português, sem repe
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.7 })
+      body: JSON.stringify({ model: 'openai/gpt-oss-120b', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.7 })
     });
     const data = await res.json();
     let resposta = data.choices?.[0]?.message?.content || 'Desculpa, não consegui entender. Pode reformular sua pergunta?';
@@ -1493,7 +1493,7 @@ Sem texto antes ou depois, sem markdown, só o array JSON.`;
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 800, temperature: 0.7 })
+      body: JSON.stringify({ model: 'openai/gpt-oss-120b', messages: [{ role: 'user', content: prompt }], max_tokens: 800, temperature: 0.7 })
     });
     const data = await res.json();
     let texto = (data.choices?.[0]?.message?.content || '[]').trim();
@@ -1927,7 +1927,7 @@ async function gerarMsgIA() {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompts[stepIdx] }], max_tokens: 400, temperature: 0.7 })
+      body: JSON.stringify({ model: 'openai/gpt-oss-120b', messages: [{ role: 'user', content: prompts[stepIdx] }], max_tokens: 400, temperature: 0.7 })
     });
     const data = await res.json();
     const msg = data.choices?.[0]?.message?.content || '';
